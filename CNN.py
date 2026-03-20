@@ -1,4 +1,4 @@
-# Note to self: Use 2168R
+# Note to self: Use 2168PROJECT
 import numpy as np
 from torchvision import datasets, transforms
 from torch.utils.data import DataLoader
@@ -11,8 +11,10 @@ import torch.optim as optim
 
 # set up tensor transform
 transform = transforms.Compose([
-    transforms.Resize((64, 64)),
+    transforms.Grayscale(num_output_channels=1),
+    transforms.Resize((128, 128)),
     transforms.ToTensor(),
+    transforms.Normalize((0.5,), (0.5,))
 ])
 
 dataset = datasets.ImageFolder(root='data/', transform=transform)
@@ -21,23 +23,29 @@ train_loader = DataLoader(dataset, batch_size=32, shuffle=True)
 class GestureCNN(nn.Module):
     def __init__(self, num_classes):
         super(GestureCNN, self).__init__()
-        # Conv 1: 3 input channels (RGB), 32 filters, 5x5 kernel
-        self.conv1 = nn.Conv2d(3, 32, kernel_size=5, stride=1, padding=2)
+        # Conv 1: Input (3, 128, 128) -> Output (32, 128, 128)
+        self.conv1 = nn.Conv2d(1, 32, kernel_size=3, stride=1, padding=1)
         self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
         
-        # Conv 2: 32 -> 64 filters
-        self.conv2 = nn.Conv2d(32, 64, kernel_size=5, stride=1, padding=2)
+        # Conv 2: Input (32, 64, 64) -> Output (64, 64, 64)
+        self.conv2 = nn.Conv2d(32, 64, kernel_size=3, stride=1, padding=1)
+        # Second Pool: Output (64, 32, 32)
         
-        # After two 2x2 pools, a 64x64 image becomes 16x16
-        # Flattened size: 64 filters * 16 * 16 = 16384
-        self.fc1 = nn.Linear(64 * 16 * 16, 512)
+        # Conv 3: Adding a 3rd layer is often better for 128x128 resolution
+        self.conv3 = nn.Conv2d(64, 128, kernel_size=3, stride=1, padding=1)
+        # Third Pool: Output (128, 16, 16)
+
+        # Calculation: 128 filters * 16 * 16 = 32,768
+        self.fc1 = nn.Linear(128 * 16 * 16, 512)
         self.fc2 = nn.Linear(512, num_classes)
         self.dropout = nn.Dropout(0.5)
 
     def forward(self, x):
-        x = self.pool(F.relu(self.conv1(x)))
-        x = self.pool(F.relu(self.conv2(x)))
-        x = x.view(-1, 64 * 16 * 16) # Flatten
+        x = self.pool(F.relu(self.conv1(x))) # 128 -> 64
+        x = self.pool(F.relu(self.conv2(x))) # 64 -> 32
+        x = self.pool(F.relu(self.conv3(x))) # 32 -> 16
+        
+        x = x.view(-1, 128 * 16 * 16) 
         x = F.relu(self.fc1(x))
         x = self.dropout(x)
         x = self.fc2(x)
@@ -78,3 +86,5 @@ def train_model():
 
 # Run the training
 train_model()
+
+torch.save(model.state_dict(), "ASL_Model")
