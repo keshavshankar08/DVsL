@@ -1,2 +1,0 @@
-# DVsL
-DVS Sign Language
