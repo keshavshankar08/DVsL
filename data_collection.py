@@ -4,7 +4,7 @@ import os
 import time
 
 class DVsL:
-    def __init__(self, base_dir="data"):
+    def __init__(self, base_dir="test_data"):
         self.base_dir = base_dir
         self.classes = [chr(i) for i in range(ord('a'), ord('z') + 1)] + ['none']
         self.current_idx = 0
@@ -97,7 +97,7 @@ class DVsL:
 if __name__ == "__main__":
     dvsl = DVsL()
 
-    camera = cv.VideoCapture(0)
+    camera = cv.VideoCapture(1)
     ret, img_initial = camera.read()
     img_initial = cv.flip(img_initial, 1)
     img_initial_gray = cv.cvtColor(img_initial, cv.COLOR_BGR2GRAY)
