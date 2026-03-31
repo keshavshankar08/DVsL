@@ -132,7 +132,7 @@ class dvsl_backend:
         return "a"
 
     def llm_correct(self, raw_sequence):
-        raw_sequence = "agpple" # for test
+        #raw_sequence = "agpple" # for test
         prompt = self._build_prompt(raw_sequence)
         word = self._predict_word(prompt)
         return word
