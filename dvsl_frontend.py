@@ -53,18 +53,15 @@ class dvsl_frontend:
         self.user_frame.pack(fill=tk.BOTH, expand=True)
 
     def setup_user_view(self):
-        ttk.Label(self.user_frame, text="Translator (End User View)", font=('', 14, 'bold')).pack(pady=5)
+        ttk.Label(self.user_frame, text="Realtime ASL Classifier", font=('', 14, 'bold')).pack(pady=5)
         
-        self.btn_test = ttk.Button(self.user_frame, text="Start Translating", command=self.toggle_testing)
+        self.btn_test = ttk.Button(self.user_frame, text="Start Predicting", command=self.toggle_testing)
         self.btn_test.pack(pady=5)
 
-        ttk.Label(self.user_frame, text="Raw Output:").pack()
-        self.lbl_raw = ttk.Label(self.user_frame, text="", font=('', 12), foreground="gray")
-        self.lbl_raw.pack(pady=5)
-
-        ttk.Label(self.user_frame, text="Final Word:").pack()
-        self.lbl_final = ttk.Label(self.user_frame, text="", font=('', 16, 'bold'), foreground="blue")
-        self.lbl_final.pack(pady=5)
+        ttk.Label(self.user_frame, text="Current Sign:").pack()
+        
+        self.lbl_current_pred = ttk.Label(self.user_frame, text="-", font=('', 64, 'bold'), foreground="blue")
+        self.lbl_current_pred.pack(pady=20)
 
     def setup_admin_view(self):
         ttk.Label(self.admin_frame, text="Admin Control Panel", font=('', 14, 'bold')).pack(pady=5)
@@ -130,15 +127,12 @@ class dvsl_frontend:
     def toggle_testing(self):
         self.is_testing = not self.is_testing
         if self.is_testing:
-            self.btn_test.config(text="Stop & Translate")
-            self.raw_sequence = []
-            self.lbl_raw.config(text="")
-            self.lbl_final.config(text="")
+            self.btn_test.config(text="Stop Predicting")
+            self.dvsl_backend.clear_buffer() # Reset the sliding window
+            self.lbl_current_pred.config(text="-")
         else:
-            self.btn_test.config(text="Start Translating")
-            raw_str = "".join(self.raw_sequence)
-            final_word = self.dvsl_backend.llm_correct(raw_str)
-            self.lbl_final.config(text=final_word)
+            self.btn_test.config(text="Start Predicting")
+            self.lbl_current_pred.config(text="-")
 
     def run_training(self):
         self.dvsl_backend.train_model()
@@ -164,8 +158,7 @@ class dvsl_frontend:
 
             if self.is_testing:
                 pred = self.dvsl_backend.predict_character(tc_frame)
-                self.raw_sequence.append(pred)
-                self.lbl_raw.config(text="".join(self.raw_sequence)[-30:])
+                self.lbl_current_pred.config(text=pred.upper())
 
             self.dvsl_backend.img_initial_gray_resized = frame_gray_resized
 

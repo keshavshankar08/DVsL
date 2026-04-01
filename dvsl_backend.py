@@ -4,6 +4,10 @@ import os
 import time
 from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
 import torch
+import torch.nn as nn
+from torchvision import transforms
+from collections import deque
+from PIL import Image
 import re
 import warnings
 os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
@@ -11,6 +15,7 @@ warnings.filterwarnings("ignore")
 from transformers import logging as hf_logging
 hf_logging.set_verbosity_error()
 hf_logging.disable_progress_bar()
+from cnn_backend import dvs_cnn
 
 class dvsl_backend:
     def __init__(self, base_dir="data", llm_name="Qwen/Qwen2.5-0.5B-Instruct"):
@@ -23,6 +28,20 @@ class dvsl_backend:
         self.img_initial_gray_resized = None
         self._setup_directories()
         self.llm = self._load_llm(llm_name)
+
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.model = dvs_cnn(len(self.classes)).to(self.device)
+        self.transform = transforms.Compose([
+            transforms.Grayscale(num_output_channels=1),
+            transforms.Resize((128, 128)),
+            transforms.ToTensor(),
+        ])
+
+        self.prediction_buffer = deque(maxlen=15)
+        self.last_pred_time = 0.0
+        self.pred_interval = 1.0 / 10.0
+
+        self.load_model()
 
     def _load_llm(self, model_name):
         tokenizer = AutoTokenizer.from_pretrained(model_name)
@@ -132,11 +151,40 @@ class dvsl_backend:
     def train_model(self):
         return True
 
-    def load_model(self):
-        return True
+    def load_model(self, path="dvs_asl_model.pth"):
+        if os.path.exists(path):
+            self.model.load_state_dict(torch.load(path, map_location=self.device, weights_only=True))
+            self.model.eval()
+            return True
+        else:
+            return False
 
     def predict_character(self, temp_contrast_frame):
-        return "a"
+        current_time = time.time()
+        
+        if current_time - self.last_pred_time < self.pred_interval:
+            return self._get_majority_vote()
+
+        self.last_pred_time = current_time
+        img = Image.fromarray(temp_contrast_frame)
+        input_tensor = self.transform(img).unsqueeze(0).to(self.device)
+
+        with torch.no_grad():
+            outputs = self.model(input_tensor)
+            _, predicted = torch.max(outputs.data, 1)
+            pred_class = self.classes[predicted.item()]
+
+        self.prediction_buffer.append(pred_class)
+
+        return self._get_majority_vote()
+    
+    def _get_majority_vote(self):
+        if not self.prediction_buffer:
+            return "-"
+        return max(set(self.prediction_buffer), key=self.prediction_buffer.count)
+    
+    def clear_buffer(self):
+        self.prediction_buffer.clear()
 
     def llm_correct(self, raw_sequence):
         #raw_sequence = "agpple" # for test
