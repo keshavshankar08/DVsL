@@ -1,8 +1,4 @@
-import torch
 import torch.nn as nn
-from torchvision import transforms
-from collections import deque
-from PIL import Image
 
 class dvs_cnn(nn.Module):
     def __init__(self, num_classes):

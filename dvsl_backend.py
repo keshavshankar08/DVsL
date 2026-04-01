@@ -4,7 +4,6 @@ import os
 import time
 from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
 import torch
-import torch.nn as nn
 from torchvision import transforms
 from collections import deque
 from PIL import Image
@@ -39,7 +38,7 @@ class dvsl_backend:
 
         self.prediction_buffer = deque(maxlen=15)
         self.last_pred_time = 0.0
-        self.pred_interval = 1.0 / 10.0
+        self.pred_interval = 1.0 / 30.0
 
         self.load_model()
 
@@ -128,29 +127,6 @@ class dvsl_backend:
             cv.imwrite(filepath, frame)
             self.last_save_time = current_time
 
-    def trim_and_print_stats(self, limit=100):
-        total = 0
-        for cls in self.classes:
-            path = os.path.join(self.base_dir, cls)
-            if not os.path.exists(path):
-                continue
-            files = sorted([f for f in os.listdir(path) if f.endswith('.png')])
-            if len(files) > limit:
-                for f in files[:-limit]:
-                    os.remove(os.path.join(path, f))
-                count = limit
-            else:
-                count = len(files)
-            total += count
-            print(f"{cls.upper()}: {count}")
-        print(f"Total samples: {total}")
-
-    def clean_data(self):
-        self.trim_and_print_stats(100)
-
-    def train_model(self):
-        return True
-
     def load_model(self, path="dvs_asl_model.pth"):
         if os.path.exists(path):
             self.model.load_state_dict(torch.load(path, map_location=self.device, weights_only=True))
@@ -166,6 +142,7 @@ class dvsl_backend:
             return self._get_majority_vote()
 
         self.last_pred_time = current_time
+
         img = Image.fromarray(temp_contrast_frame)
         input_tensor = self.transform(img).unsqueeze(0).to(self.device)
 
@@ -187,7 +164,6 @@ class dvsl_backend:
         self.prediction_buffer.clear()
 
     def llm_correct(self, raw_sequence):
-        #raw_sequence = "agpple" # for test
         prompt = self._build_prompt(raw_sequence)
         word = self._predict_word(prompt)
         return word

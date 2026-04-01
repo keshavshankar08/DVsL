@@ -8,3 +8,4 @@ torchvision
 matplotlib
 scikit-learn
 seaborn
+torchmetrics

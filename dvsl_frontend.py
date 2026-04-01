@@ -82,8 +82,6 @@ class dvsl_frontend:
         train_frame = ttk.LabelFrame(self.admin_frame, text="Model Pipeline", padding=10)
         train_frame.pack(fill=tk.X, pady=5)
 
-        ttk.Button(train_frame, text="Clean & Trim Data", command=self.dvsl_backend.clean_data).pack(side=tk.LEFT, padx=5)
-        ttk.Button(train_frame, text="Train Model", command=self.run_training).pack(side=tk.LEFT, padx=5)
         ttk.Button(train_frame, text="Load Model", command=self.dvsl_backend.load_model).pack(side=tk.LEFT, padx=5)
 
     def request_admin(self):
@@ -133,10 +131,6 @@ class dvsl_frontend:
         else:
             self.btn_test.config(text="Start Predicting")
             self.lbl_current_pred.config(text="-")
-
-    def run_training(self):
-        self.dvsl_backend.train_model()
-        messagebox.showinfo("Success", "Model trained successfully")
 
     def process_video(self):
         if not self.stream_running or self.camera is None:
