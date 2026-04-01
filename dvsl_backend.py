@@ -13,7 +13,7 @@ hf_logging.set_verbosity_error()
 hf_logging.disable_progress_bar()
 
 class dvsl_backend:
-    def __init__(self, base_dir="data", llm_name="Qwen/Qwen3-0.6B"): # or Qwen/Qwen2.5-0.5B
+    def __init__(self, base_dir="data", llm_name="Qwen/Qwen2.5-0.5B-Instruct"):
         self.base_dir = base_dir
         self.classes = [chr(i) for i in range(ord('a'), ord('z') + 1)] + ['none']
         self.is_recording = False
@@ -35,15 +35,22 @@ class dvsl_backend:
         return gen
     
     def _build_prompt(self, raw_sequence):
-        prompt = (
-            "Fix the spelling:\n"
-            "helo -> hello\n"
-            "wrold -> world\n"
-            "bannana -> banana\n"
-            "datta -> data\n"
-            f"{raw_sequence} -> "
-        )
-        return prompt
+        messages = [
+            {
+                "role": "system", 
+                "content": (
+                    "You are a spelling corrector for a sign language interpreter. "
+                    "The interpreter often repeats letters or swaps similar-looking letters "
+                    "Simply respond with the corrected word they meant to spell."
+                )
+            },
+            {"role": "user", "content": "Correct this: parson"},
+            {"role": "assistant", "content": "person"},
+            {"role": "user", "content": "Correct this: trucck"},
+            {"role": "assistant", "content": "truck"},
+            {"role": "user", "content": f"Correct this: {raw_sequence}"}
+        ]
+        return messages
     
     def _predict_word(self, messages):
         try:
@@ -132,7 +139,7 @@ class dvsl_backend:
         return "a"
 
     def llm_correct(self, raw_sequence):
-        raw_sequence = "agpple" # for test
+        #raw_sequence = "agpple" # for test
         prompt = self._build_prompt(raw_sequence)
         word = self._predict_word(prompt)
         return word
