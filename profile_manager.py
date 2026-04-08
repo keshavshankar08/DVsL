@@ -10,12 +10,10 @@ class ProfileManager:
         self._ensure_setup()
 
     def _ensure_setup(self):        
-        # Create empty users file if not exists
         if not os.path.exists(self.users_file):
             with open(self.users_file, 'w') as f:
                 json.dump({}, f)
 
-        # Generate default dictionaries if missing
         defaults = {
             "easy.txt": ["cat", "dog", "sun", "hat", "bat", "car", "cup", "pen"],
             "medium.txt": ["apple", "house", "train", "plane", "mouse", "water", "chair"],
@@ -37,10 +35,14 @@ class ProfileManager:
         with open(self.users_file, 'w') as f:
             json.dump(users, f, indent=4)
 
-    def get_random_word(self, difficulty):
+    def get_random_word(self, difficulty, previous_word=""):
         filepath = os.path.join(self.dicts_dir, f"{difficulty.lower()}.txt")
         if not os.path.exists(filepath):
             return "error"
         with open(filepath, 'r') as f:
             words = [line.strip().lower() for line in f if line.strip()]
+            
+        if len(words) > 1 and previous_word in words:
+            words.remove(previous_word)
+            
         return random.choice(words) if words else "empty"

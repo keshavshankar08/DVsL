@@ -15,7 +15,7 @@ BATCH_SIZE = 32
 EPOCHS = 15
 LEARNING_RATE = 0.001
 IMG_SIZE = 128
-MODEL_PATH = 'dvs_asl_model.pth'
+MODEL_PATH = 'asl_model.pth'
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using device: {device}")

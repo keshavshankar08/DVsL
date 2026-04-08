@@ -2,22 +2,14 @@ import cv2 as cv
 import numpy as np
 import os
 import time
-from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
 import torch
 from torchvision import transforms
 from collections import deque
 from PIL import Image
-import re
-import warnings
-os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
-warnings.filterwarnings("ignore")
-from transformers import logging as hf_logging
-hf_logging.set_verbosity_error()
-hf_logging.disable_progress_bar()
 from cnn_backend import dvs_cnn
 
 class dvsl_backend:
-    def __init__(self, base_dir="data", llm_name="Qwen/Qwen2.5-0.5B-Instruct"):
+    def __init__(self, base_dir="data"):
         self.base_dir = base_dir
         self.classes = [chr(i) for i in range(ord('a'), ord('z') + 1)] + ['none']
         self.is_recording = False
@@ -26,7 +18,6 @@ class dvsl_backend:
         self.current_target_class = 'a'
         self.img_initial_gray_resized = None
         self._setup_directories()
-        self.llm = self._load_llm(llm_name)
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.model = dvs_cnn(len(self.classes)).to(self.device)
@@ -36,65 +27,11 @@ class dvsl_backend:
             transforms.ToTensor(),
         ])
 
-        self.prediction_buffer = deque(maxlen=15)
+        self.prediction_buffer = deque(maxlen=30)
         self.last_pred_time = 0.0
         self.pred_interval = 1.0 / 30.0
 
         self.load_model()
-
-    def _load_llm(self, model_name):
-        tokenizer = AutoTokenizer.from_pretrained(model_name)
-        model = AutoModelForCausalLM.from_pretrained(
-            model_name, 
-            device_map="auto",
-            torch_dtype=torch.float16
-        )
-        gen = pipeline("text-generation", model=model, tokenizer=tokenizer)
-        return gen
-    
-    def _build_prompt(self, raw_sequence):
-        messages = [
-            {
-                "role": "system", 
-                "content": (
-                    "You are a spelling corrector for a sign language interpreter. "
-                    "The interpreter often repeats letters or swaps similar-looking letters "
-                    "Simply respond with the corrected word they meant to spell."
-                )
-            },
-            {"role": "user", "content": "Correct this: parson"},
-            {"role": "assistant", "content": "person"},
-            {"role": "user", "content": "Correct this: trucck"},
-            {"role": "assistant", "content": "truck"},
-            {"role": "user", "content": f"Correct this: {raw_sequence}"}
-        ]
-        return messages
-    
-    def _predict_word(self, messages):
-        try:
-            output = self.llm(
-                messages, 
-                max_new_tokens=8,
-                max_length=None,
-                temperature=None,
-                top_p=None,
-                top_k=None,
-                do_sample=False,
-                return_full_text=False
-            )
-            
-            if not output or "generated_text" not in output[0]:
-                return ""
-            
-            raw_output = output[0]["generated_text"]
-            first_line = raw_output.split('\n')[0]
-            clean_word = re.sub(r'<think>.*?</think>', '', first_line, flags=re.DOTALL)
-            
-            return clean_word.strip()
-            
-        except Exception as e:
-            print(f"LLM Error: {e}")
-            return ""
 
     def _setup_directories(self):
         for cls in self.classes:
@@ -127,7 +64,7 @@ class dvsl_backend:
             cv.imwrite(filepath, frame)
             self.last_save_time = current_time
 
-    def load_model(self, path="dvs_asl_model.pth"):
+    def load_model(self, path="asl_model.pth"):
         if os.path.exists(path):
             self.model.load_state_dict(torch.load(path, map_location=self.device, weights_only=True))
             self.model.eval()
@@ -162,8 +99,3 @@ class dvsl_backend:
     
     def clear_buffer(self):
         self.prediction_buffer.clear()
-
-    def llm_correct(self, raw_sequence):
-        prompt = self._build_prompt(raw_sequence)
-        word = self._predict_word(prompt)
-        return word

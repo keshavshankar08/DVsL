@@ -1,12 +1,11 @@
 import customtkinter as ctk
 import cv2 as cv
 from PIL import Image
-import threading
 from dvsl_backend import dvsl_backend
 from profile_manager import ProfileManager
+import time
 
-# Set sleek modern theme
-ctk.set_appearance_mode("Dark")
+ctk.set_appearance_mode("Light")
 ctk.set_default_color_theme("blue")
 
 class DVSLApp(ctk.CTk):
@@ -15,11 +14,9 @@ class DVSLApp(ctk.CTk):
         self.title("DVS ASL Learning")
         self.geometry("900x700")
         
-        # Backend & Managers
         self.profile_mgr = ProfileManager()
         self.backend = dvsl_backend()
         
-        # State Variables
         self.current_user = None
         self.words_spelled = 0
         self.camera = None
@@ -28,12 +25,12 @@ class DVSLApp(ctk.CTk):
         self.current_letter_idx = 0
         self.letter_labels = []
         
-        # Cleanup on exit
+        self.cooldown_time = 0.0
+        
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
         
         self.show_login_screen()
 
-    # --- SCREEN 1: LOGIN ---
     def show_login_screen(self):
         self._clear_window()
         
@@ -72,7 +69,6 @@ class DVSLApp(ctk.CTk):
             self.profile_mgr.save_user_progress(new_name, 0)
             self.show_setup_screen()
 
-    # --- SCREEN 2: SETUP ---
     def show_setup_screen(self):
         self._clear_window()
         
@@ -94,7 +90,6 @@ class DVSLApp(ctk.CTk):
         
         ctk.CTkButton(frame, text="Switch User", command=self.show_login_screen, fg_color="transparent", border_width=1, text_color="gray").pack()
 
-    # --- SCREEN 3: GAMEPLAY ---
     def start_game(self):
         # Init Camera
         cam_idx = int(self.cam_var.get())
@@ -111,7 +106,7 @@ class DVSLApp(ctk.CTk):
         top_frame = ctk.CTkFrame(self, fg_color="transparent")
         top_frame.pack(fill="x", pady=20, padx=20)
         
-        self.lbl_stats = ctk.CTkLabel(top_frame, text=f"Words Spelled: {self.words_spelled}", font=("Helvetica", 16, "bold"), text_color="green")
+        self.lbl_stats = ctk.CTkLabel(top_frame, text=f"Words Spelled: {self.words_spelled}", font=("Helvetica", 16, "bold"), text_color="black")
         self.lbl_stats.pack(side="left")
         
         self.wordle_frame = ctk.CTkFrame(top_frame, fg_color="transparent")
@@ -139,7 +134,7 @@ class DVSLApp(ctk.CTk):
 
     def load_new_word(self):
         diff = self.diff_var.get()
-        self.current_word = self.profile_mgr.get_random_word(diff)
+        self.current_word = self.profile_mgr.get_random_word(diff, previous_word=self.current_word)
         self.current_letter_idx = 0
         self.backend.clear_buffer()
         self.render_wordle_boxes()
@@ -155,21 +150,20 @@ class DVSLApp(ctk.CTk):
             if i < self.current_letter_idx:
                 bg = "green"
                 border = 0
+                txt_color = "white"
             elif i == self.current_letter_idx:
                 bg = "transparent"
                 border = 2
+                txt_color = "black"
             else:
-                bg = "gray20"
+                bg = "gray70"
                 border = 0
+                txt_color = "white"
                 
-            lbl = ctk.CTkLabel(self.wordle_frame, text=char.upper(), font=("Helvetica", 32, "bold"), 
-                               width=60, height=60, corner_radius=10, 
-                               fg_color=bg, text_color="white")
+            lbl = ctk.CTkLabel(self.wordle_frame, text=char.upper(), font=("Helvetica", 32, "bold"), width=60, height=60, corner_radius=10, fg_color=bg, text_color=txt_color)
             
-            # CustomTkinter doesn't have a direct 'border_color' for Labels easily, 
-            # so we use a sub-frame trick if it's the active letter to give it a border
             if i == self.current_letter_idx:
-                border_frame = ctk.CTkFrame(self.wordle_frame, border_width=3, border_color="#1f538d", corner_radius=10, fg_color="transparent")
+                border_frame = ctk.CTkFrame(self.wordle_frame, border_width=3, border_color="#000000", corner_radius=10, fg_color="transparent")
                 border_frame.pack(side="left", padx=5)
                 lbl = ctk.CTkLabel(border_frame, text=char.upper(), font=("Helvetica", 32, "bold"), width=54, height=54)
                 lbl.pack(padx=3, pady=3)
@@ -180,7 +174,8 @@ class DVSLApp(ctk.CTk):
 
     def handle_correct_letter(self):
         self.current_letter_idx += 1
-        self.backend.clear_buffer() # Reset prediction wiggles
+        self.backend.clear_buffer()
+        self.cooldown_time = time.time() + 2.0
         
         if self.current_letter_idx >= len(self.current_word):
             # Word Complete!
@@ -207,12 +202,13 @@ class DVSLApp(ctk.CTk):
 
             tc_frame = self.backend.temporal_contrast(self.backend.img_initial_gray_resized, frame_gray_resized)
 
-            # GAME LOGIC: Check prediction
-            pred = self.backend.predict_character(tc_frame)
-            if self.current_letter_idx < len(self.current_word):
-                target_char = self.current_word[self.current_letter_idx].lower()
-                if pred == target_char:
-                    self.handle_correct_letter()
+            # check prediction
+            if time.time() > self.cooldown_time:
+                pred = self.backend.predict_character(tc_frame)
+                if self.current_letter_idx < len(self.current_word):
+                    target_char = self.current_word[self.current_letter_idx].lower()
+                    if pred == target_char:
+                        self.handle_correct_letter()
 
             self.backend.img_initial_gray_resized = frame_gray_resized
 
