@@ -1,11 +1,10 @@
 numpy
 opencv-python
 pillow
-transformers
 torch
-accelerate
 torchvision
 matplotlib
 scikit-learn
 seaborn
-torchmetrics
+customtkinter
+tcasl
