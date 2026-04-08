@@ -7,7 +7,7 @@ name = "tcasl"
 version = "1.0.0"
 description = "Python library for temporal contrast American Sign Language classification."
 readme = "README.md"
-license = "MIT"
+license = { file = "LICENSE" }
 authors = [
     { name = "Keshav Shankar", email = "keshavshankar08@gmail.com" }
 ]

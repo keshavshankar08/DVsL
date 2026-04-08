@@ -26,12 +26,18 @@ class BaseCNN(nn.Module):
         return x
 
 MODEL_REGISTRY = {
-    "cnn_v1": BaseCNN,
-    # "snn_v1": SpikingNN,
+    "cnn_v1": {
+        "class": BaseCNN,
+        "url": "https://github.com/YOUR_USERNAME/TCASLCore/releases/download/v1.0.0/cnn_v1.pth"
+    },
+    # "snn_v1": {
+    #     "class": BaseSNN,
+    #     "url": "https://github.com/keshavshankar08/TCASLCore/releases/download/v_._._/snn_v1.pth"
+    # }
 }
 
 class TCASL:
-    def __init__(self, arch: str = "cnn_v1", model_path: str = "asl_model.pth"):
+    def __init__(self, arch: str = "cnn_v1", model_path: str = None):
         """
         Initializes the TCASL classifier.
 
@@ -44,7 +50,11 @@ class TCASL:
         if arch not in MODEL_REGISTRY:
             raise ValueError(f"Architecture '{arch}' not found. Available: {list(MODEL_REGISTRY.keys())}")
         
-        self.model = MODEL_REGISTRY[arch](num_classes=len(self.classes)).to(self.device)
+        arch_info = MODEL_REGISTRY[arch]
+        ModelClass = arch_info["class"]
+        download_url = arch_info["url"]
+
+        self.model = ModelClass(num_classes=len(self.classes)).to(self.device)
 
         self.transform = transforms.Compose([
             transforms.Grayscale(num_output_channels=1), 
@@ -52,8 +62,7 @@ class TCASL:
             transforms.ToTensor()
         ])
 
-        default_download_url = "https://github.com/keshavshankar08/TCASL/releases/download/v1.0.0/cnn_v1.pth"
-        self._load_model(model_path, default_download_url)
+        self._load_model(model_path, download_url)
 
     def _load_model(self, path: str, download_url: str) -> None:
         if path and os.path.exists(path):
