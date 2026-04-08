@@ -39,8 +39,12 @@ class BaseCNN(nn.Module):
         x = self.conv_layers(x)
         x = self.fc_layers(x)
         return x
+    
+class SDNN(nn.Module):
+    pass
 
 # Add your new architectures here
 LOCAL_MODEL_REGISTRY: Dict[str, Type[nn.Module]] = {
     "cnn_v1": BaseCNN,
+    "sdnn_v1": SDNN
 }
