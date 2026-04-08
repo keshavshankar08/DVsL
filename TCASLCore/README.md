@@ -1,6 +1,6 @@
-# tcasl
+# TCASL
 
-tcasl is a Python library for ...
+TCASL is a lightweight, pure Python inference engine for predicting American Sign Language (ASL) gestures using Temporal Contrast, simulating a Dynamic Vision Sensor (DVS).
 
 ## Features
 
