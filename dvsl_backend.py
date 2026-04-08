@@ -64,7 +64,7 @@ class dvsl_backend:
             cv.imwrite(filepath, frame)
             self.last_save_time = current_time
 
-    def load_model(self, path="asl_model.pth"):
+    def load_model(self, path="cnn_v1.pth"):
         if os.path.exists(path):
             self.model.load_state_dict(torch.load(path, map_location=self.device, weights_only=True))
             self.model.eval()
