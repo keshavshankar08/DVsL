@@ -1,7 +1,0 @@
-apple
-house
-train
-plane
-mouse
-water
-chair

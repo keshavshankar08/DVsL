@@ -1,8 +1,15 @@
 import torch.nn as nn
+from torch import Tensor
+from typing import Dict, Type
 
-class dvs_cnn(nn.Module):
-    def __init__(self, num_classes):
-        super(dvs_cnn, self).__init__()
+class BaseCNN(nn.Module):
+    def __init__(self, num_classes: int) -> None:
+        """
+        Initializes the CNN layers.
+
+        :param num_classes: The number of output classes for prediction.
+        """
+        super(BaseCNN, self).__init__()
         self.conv_layers = nn.Sequential(
             nn.Conv2d(1, 16, kernel_size=3, padding=1),
             nn.ReLU(),
@@ -22,7 +29,18 @@ class dvs_cnn(nn.Module):
             nn.Linear(128, num_classes)
         )
 
-    def forward(self, x):
+    def forward(self, x: Tensor) -> Tensor:
+        """
+        Defines the forward pass of the network.
+
+        :param x: Input tensor containing image data.
+        :return: Output tensor with class logits.
+        """
         x = self.conv_layers(x)
         x = self.fc_layers(x)
         return x
+
+# Add your new architectures here
+LOCAL_MODEL_REGISTRY: Dict[str, Type[nn.Module]] = {
+    "cnn_v1": BaseCNN,
+}
