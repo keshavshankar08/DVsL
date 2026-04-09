@@ -74,7 +74,7 @@ class SDNN(nn.Module):
                 # delta encoding of the input
                 slayer.block.sigma_delta.Input(sdnn_params), 
                 # convolution layers
-                slayer.block.sigma_delta.Conv(sdnn_cnn_params,  3, 24, 3, padding=0, stride=2, weight_scale=2, weight_norm=True),
+                slayer.block.sigma_delta.Conv(sdnn_cnn_params,  1, 24, 3, padding=0, stride=2, weight_scale=2, weight_norm=True),
                 slayer.block.sigma_delta.Conv(sdnn_cnn_params, 24, 36, 3, padding=0, stride=2, weight_scale=2, weight_norm=True),
                 slayer.block.sigma_delta.Conv(sdnn_cnn_params, 36, 64, 3, padding=(1, 0), stride=(2, 1), weight_scale=2, weight_norm=True),
                 slayer.block.sigma_delta.Conv(sdnn_cnn_params, 64, 64, 3, padding=0, stride=1, weight_scale=2, weight_norm=True),

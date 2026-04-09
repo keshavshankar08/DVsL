@@ -17,6 +17,7 @@ def main() -> None:
     EPOCHS = 15
     LEARNING_RATE = 0.001
     IMG_SIZE = 128
+    LAM  = 0.01 # sdnn parameter
     MODEL_PATH = f"{TARGET_ARCH}.pth"
 
     if TARGET_ARCH not in LOCAL_MODEL_REGISTRY:
@@ -29,6 +30,7 @@ def main() -> None:
         transforms.Grayscale(num_output_channels=1),
         transforms.Resize((IMG_SIZE, IMG_SIZE)),
         transforms.ToTensor(),
+        transforms.Normalize((0.5,), (0.5,)) # added this
     ])
 
     full_dataset = datasets.ImageFolder(root=DATA_DIR, transform=transform)
@@ -64,9 +66,25 @@ def main() -> None:
         running_loss, correct, total = 0.0, 0, 0
         for inputs, labels in train_loader:
             inputs, labels = inputs.to(device), labels.to(device)
+            
+            # modify tensor shape
+            if "sdnn" in TARGET_ARCH:
+                inputs = inputs.unsqueeze(-1)
+            
             optimizer.zero_grad()
             outputs = model(inputs)
-            loss = criterion(outputs, labels)
+
+            # handle sdnn outputs
+            if isinstance(outputs, tuple):  #SDNN
+                logits, event_cost, _ = outputs
+                # Flatten temporal dimension for CrossEntropy
+                logits = logits.flatten(start_dim=1) 
+                loss = criterion(logits, labels) + LAM * event_cost
+            else: #CNN
+                logits = outputs
+                loss = criterion(logits, labels)
+
+            
             loss.backward()
             optimizer.step()
             
@@ -82,12 +100,14 @@ def main() -> None:
         val_loss, correct, total = 0.0, 0, 0
         with torch.no_grad():
             for inputs, labels in val_loader:
+                if "sdnn" in TARGET_ARCH: inputs = inputs.unsqueeze(-1)
                 inputs, labels = inputs.to(device), labels.to(device)
                 outputs = model(inputs)
-                loss = criterion(outputs, labels)
+                logits = outputs[0].flatten(start_dim=1) if isinstance(outputs, tuple) else outputs
+                loss = criterion(logits, labels)
                 
                 val_loss += loss.item()
-                _, predicted = torch.max(outputs.data, 1)
+                _, predicted = torch.max(logits, 1)
                 total += labels.size(0)
                 correct += (predicted == labels).sum().item()
                 
