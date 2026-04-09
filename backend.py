@@ -9,7 +9,6 @@ from PIL import Image
 from typing import Optional, List
 from tcasl import TCASL
 from model_registry import LOCAL_MODEL_REGISTRY
-from train_model import IMG_SIZE
 
 class TCASLBackend:
     def __init__(self, default_arch: str = "cnn_v1", base_dir: str = "data") -> None:
@@ -31,9 +30,9 @@ class TCASLBackend:
         self.tcasl_engine = TCASL()
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         
-        transform = transforms.Compose([
+        self.transform = transforms.Compose([
             transforms.Grayscale(num_output_channels=1),
-            transforms.Resize((IMG_SIZE, IMG_SIZE)),
+            transforms.Resize((128, 128)),
             transforms.ToTensor(),
             transforms.Normalize((0.5,), (0.5,)) # added this
             ])
