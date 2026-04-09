@@ -90,7 +90,7 @@ class SDNN(nn.Module):
         
     
         # Event sparsity loss: penalizes network for high-rate events
-    def event_rate_loss(x, max_rate=0.01):
+    def event_rate_loss(self, x, max_rate=0.01):
         mean_event_rate = torch.mean(torch.abs(x))
         return F.mse_loss(F.relu(mean_event_rate - max_rate), torch.zeros_like(mean_event_rate))
         
@@ -101,7 +101,7 @@ class SDNN(nn.Module):
         for block in self.blocks: 
             x = block(x)
             if hasattr(block, 'neuron'):
-                event_cost += event_rate_loss(x)
+                event_cost += self.event_rate_loss(x)
                 # Count non-zero spikes in this layer
                 layer_spikes = torch.sum((x[..., 1:] != 0).to(torch.float32)).item()
                 count.append(layer_spikes)
