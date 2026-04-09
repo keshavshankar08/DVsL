@@ -13,11 +13,13 @@ TARGET_ARCH = "sdnn_v1"
 def main() -> None:
     """Executes the complete model training, evaluation, and saving pipeline."""
     DATA_DIR = 'data'
-    BATCH_SIZE = 32
+    BATCH_SIZE=  32
+    BATCH_SIZE_SDNN = 8 # Changed from 32 to 8
     EPOCHS = 15
     LEARNING_RATE = 0.001
+    LEARNING_RATE_SDNN = 0.0001
     IMG_SIZE = 128
-    LAM  = 0.01 # sdnn parameter
+    LAM  = 0.01 # lambda regularization parameter - used in sdnn
     MODEL_PATH = f"{TARGET_ARCH}.pth"
 
     if TARGET_ARCH not in LOCAL_MODEL_REGISTRY:
@@ -47,6 +49,11 @@ def main() -> None:
         generator=torch.Generator().manual_seed(42)
     )
 
+    # modify parameters if sdnn
+    if "sdnn" in TARGET_ARCH:
+        BATCH_SIZE = BATCH_SIZE_SDNN
+        LEARNING_RATE = LEARNING_RATE_SDNN
+
     train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
     val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False)
     test_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False)
@@ -55,7 +62,10 @@ def main() -> None:
     model = ModelClass(num_classes).to(device)
     
     criterion = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
+    if "sdnn" in TARGET_ARCH:
+        optimizer = optim.RAdam(model.parameters(), lr= LEARNING_RATE, weight_decay=1e-5)
+    else:
+        optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
 
     train_losses, val_losses = [], []
     train_accs, val_accs = [], []
@@ -89,7 +99,7 @@ def main() -> None:
             optimizer.step()
             
             running_loss += loss.item()
-            _, predicted = torch.max(outputs.data, 1)
+            _, predicted = torch.max(logits, 1)
             total += labels.size(0)
             correct += (predicted == labels).sum().item()
             
@@ -102,6 +112,7 @@ def main() -> None:
             for inputs, labels in val_loader:
                 if "sdnn" in TARGET_ARCH: inputs = inputs.unsqueeze(-1)
                 inputs, labels = inputs.to(device), labels.to(device)
+
                 outputs = model(inputs)
                 logits = outputs[0].flatten(start_dim=1) if isinstance(outputs, tuple) else outputs
                 loss = criterion(logits, labels)
@@ -124,9 +135,14 @@ def main() -> None:
 
     with torch.no_grad():
         for inputs, labels in test_loader:
+            if "sdnn" in TARGET_ARCH: inputs = inputs.unsqueeze(-1)
             inputs, labels = inputs.to(device), labels.to(device)
             outputs = model(inputs)
-            _, predicted = torch.max(outputs, 1)
+
+            logits = outputs[0] if isinstance(outputs, tuple) else outputs
+            _, predicted = torch.max(logits, 1)
+
+            _, predicted = torch.max(logits, 1)
             all_preds.extend(predicted.cpu().numpy())
             all_labels.extend(labels.cpu().numpy())
 

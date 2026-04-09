@@ -60,7 +60,9 @@ class TCASLBackend:
             
         self.current_arch = arch
         ModelClass = LOCAL_MODEL_REGISTRY[arch]
+
         self.model = ModelClass(len(self.classes)).to(self.device)
+
         self.load_model()
         return True
 
@@ -106,11 +108,28 @@ class TCASLBackend:
         :return: True if successful, False otherwise.
         """
         path = f"{self.current_arch}.pth"
-        if os.path.exists(path):
-            self.model.load_state_dict(torch.load(path, map_location=self.device, weights_only=True))
-            self.model.eval()
-            return True
-        return False
+        if not os.path.exists(path):
+            print(f"Warning: {path} not found.")
+            return False
+
+        checkpoint = torch.load(path, map_location=self.device, weights_only=True)
+        model_state = self.model.state_dict()
+
+        filtered_state = {}
+        for name, param in checkpoint.items():
+            if name in model_state:
+                if param.shape == model_state[name].shape:
+                    filtered_state[name] = param
+                else:
+                    # skip the problematic layers
+                    print(f"[Model Load] Skipping {name}: Checkpoint {list(param.shape)} " 
+                          f"!= Model {list(model_state[name].shape)}")
+
+        # Load non-problematic weights
+        self.model.load_state_dict(filtered_state, strict=False)
+        self.model.eval()
+        print(f"Successfully loaded {self.current_arch} weights (filtered).")
+        return True
 
     def predict_character(self, temp_contrast_frame: np.ndarray) -> str:
         """
@@ -127,9 +146,17 @@ class TCASLBackend:
         img = Image.fromarray(temp_contrast_frame)
         input_tensor = self.transform(img).unsqueeze(0).to(self.device)
 
+        if "sdnn_v1" in self.current_arch:
+            input_tensor = input_tensor.unsqueeze(-1)
+
         with torch.no_grad():
             outputs = self.model(input_tensor)
-            _, predicted = torch.max(outputs.data, 1)
+            logits = outputs[0] if isinstance(outputs, tuple) else outputs
+
+            if logits.dim() == 3:
+                logits = logits.mean(dim=2)
+
+            _, predicted = torch.max(logits, 1)
             pred_class = self.classes[predicted.item()]
 
         self.prediction_buffer.append(pred_class)
