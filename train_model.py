@@ -12,7 +12,7 @@ TARGET_ARCH = "cnn_v1"
 
 def main() -> None:
     """Executes the complete model training, evaluation, and saving pipeline."""
-    DATA_DIR = 'data'
+    DATA_DIR = 'data_nate'
     BATCH_SIZE = 32
     EPOCHS = 15
     LEARNING_RATE = 0.001
