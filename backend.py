@@ -118,7 +118,7 @@ class TCASLBackend:
         checkpoint = torch.load(path, map_location=self.device, weights_only=True)
         
         # Special set up for sdnn loading case
-        if "sdnn_v1" in self.current_arch:
+        if "sdnn" in self.current_arch:
             model_state = self.model.state_dict()
             updated_model_state = model_state.copy()
             has_updates = False
@@ -169,7 +169,7 @@ class TCASLBackend:
         img = Image.fromarray(temp_contrast_frame)
         input_tensor = self.transform(img).unsqueeze(0).to(self.device)
 
-        if "sdnn_v1" in self.current_arch:
+        if "sdnn" in self.current_arch:
             input_tensor = input_tensor.unsqueeze(-1)
 
         with torch.no_grad():
