@@ -115,5 +115,6 @@ class SDNN(nn.Module):
 # Add your new architectures here
 LOCAL_MODEL_REGISTRY: Dict[str, Type[nn.Module]] = {
     "cnn_v1": BaseCNN,
-    "sdnn_v1": SDNN
+    "sdnn_v1": SDNN,
+    "sdnn_nate": SDNN
 }
