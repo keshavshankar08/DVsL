@@ -113,25 +113,51 @@ class TCASLBackend:
         if not os.path.exists(path):
             print(f"Warning: {path} not found.")
             return False
-
+    
+        # 1. Load the checkpoint
         checkpoint = torch.load(path, map_location=self.device, weights_only=True)
         model_state = self.model.state_dict()
 
-        filtered_state = {}
-        for name, param in checkpoint.items():
-            if name in model_state:
-                if param.shape == model_state[name].shape:
-                    filtered_state[name] = param
-                else:
-                    # skip the problematic layers
-                    print(f"[Model Load] Skipping {name}: Checkpoint {list(param.shape)} " 
-                          f"!= Model {list(model_state[name].shape)}")
+        # 2. Fix Buffer Size Mismatches
+        # We iterate through the checkpoint and update the model's internal 
+        # buffers if the shapes don't match (specifically for BatchNorm stats).
+        updated_model_state = model_state.copy()
+        has_updates = False
 
-        # Load non-problematic weights
-        self.model.load_state_dict(filtered_state, strict=False)
+        for key, val in checkpoint.items():
+            if key in model_state:
+                if val.shape != model_state[key].shape:
+                    # This specifically targets running_mean/running_var mismatch
+                    print(f"  -> Resizing buffer {key}: {model_state[key].shape} -> {val.shape}")
+                    updated_model_state[key] = torch.zeros_like(val)
+                    has_updates = True
+
+        # If we changed buffer shapes, we must reload the state into the model
+        # but we can't use load_state_dict directly on a shape-mismatched model.
+        # Instead, we manually update the model's internal registered buffers.
+        if has_updates:
+            for name, module in self.model.named_modules():
+                if hasattr(module, 'running_mean') and f"{name}.running_mean" in checkpoint:
+                    target_shape = checkpoint[f"{name}.running_mean"].shape
+                    # Re-register the buffer with the correct size
+                    module.register_buffer('running_mean', torch.zeros(target_shape).to(self.device))
+                
+                # Repeat for running_var if your SLAYER version uses it
+                if hasattr(module, 'running_var') and f"{name}.running_var" in checkpoint:
+                    target_shape = checkpoint[f"{name}.running_var"].shape
+                    module.register_buffer('running_var', torch.zeros(target_shape).to(self.device))
+
+        # 3. Now perform the actual load
+        try:
+            self.model.load_state_dict(checkpoint, strict=True)
+            print(f"Successfully loaded {self.current_arch} weights.")
+        except RuntimeError as e:
+            print(f"Strict load failed: {e}")
+            return False
+            
         self.model.eval()
-        print(f"Successfully loaded {self.current_arch} weights (filtered).")
         return True
+    
 
     def predict_character(self, temp_contrast_frame: np.ndarray) -> str:
         """
