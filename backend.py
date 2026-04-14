@@ -9,6 +9,7 @@ from PIL import Image
 from typing import Optional, List
 from tcasl import TCASL
 from model_registry import LOCAL_MODEL_REGISTRY
+from train_model import IMG_SIZE
 
 class TCASLBackend:
     def __init__(self, default_arch: str = "cnn_v1", base_dir: str = "data") -> None:
@@ -30,11 +31,13 @@ class TCASLBackend:
         self.tcasl_engine = TCASL()
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         
-        self.transform = transforms.Compose([
+        transform = transforms.Compose([
             transforms.Grayscale(num_output_channels=1),
-            transforms.Resize((128, 128)),
+            transforms.Resize((IMG_SIZE, IMG_SIZE)),
             transforms.ToTensor(),
-        ])
+            transforms.Normalize((0.5,), (0.5,)) # added this
+            ])
+
 
         self.prediction_buffer: deque = deque(maxlen=30)
         self.last_pred_time: float = 0.0
@@ -151,13 +154,16 @@ class TCASLBackend:
 
         with torch.no_grad():
             outputs = self.model(input_tensor)
-            logits = outputs[0] if isinstance(outputs, tuple) else outputs
+    
+        if isinstance(outputs, tuple): # SDNN Case
+            logits, _, _ = outputs
+                # Flatten temporal dimension for CrossEntropy
+            logits = logits.flatten(start_dim=1) 
+        else: # CNN
+            logits = outputs
 
-            if logits.dim() == 3:
-                logits = logits.mean(dim=2)
-
-            _, predicted = torch.max(logits, 1)
-            pred_class = self.classes[predicted.item()]
+        _, predicted = torch.max(logits, 1)
+        pred_class = self.classes[predicted.item()]
 
         self.prediction_buffer.append(pred_class)
         return self._get_majority_vote()
