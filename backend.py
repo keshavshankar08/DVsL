@@ -34,7 +34,9 @@ class TCASLBackend:
             transforms.Grayscale(num_output_channels=1),
             transforms.Resize((128, 128)),
             transforms.ToTensor(),
-        ])
+            transforms.Normalize((0.5,), (0.5,)) # added this
+            ])
+
 
         self.prediction_buffer: deque = deque(maxlen=30)
         self.last_pred_time: float = 0.0
@@ -60,7 +62,9 @@ class TCASLBackend:
             
         self.current_arch = arch
         ModelClass = LOCAL_MODEL_REGISTRY[arch]
+
         self.model = ModelClass(len(self.classes)).to(self.device)
+
         self.load_model()
         return True
 
@@ -106,11 +110,49 @@ class TCASLBackend:
         :return: True if successful, False otherwise.
         """
         path = f"{self.current_arch}.pth"
-        if os.path.exists(path):
-            self.model.load_state_dict(torch.load(path, map_location=self.device, weights_only=True))
-            self.model.eval()
-            return True
-        return False
+        if not os.path.exists(path):
+            print(f"Warning: {path} not found.")
+            return False
+    
+        # 1. Load the checkpoint
+        checkpoint = torch.load(path, map_location=self.device, weights_only=True)
+        
+        # Special set up for sdnn loading case
+        if "sdnn" in self.current_arch:
+            model_state = self.model.state_dict()
+            updated_model_state = model_state.copy()
+            has_updates = False
+
+            for key, val in checkpoint.items():
+                if key in model_state:
+                    if val.shape != model_state[key].shape:
+                        # This specifically targets running_mean/running_var mismatch
+                        updated_model_state[key] = torch.zeros_like(val)
+                        has_updates = True
+
+            if has_updates:
+                for name, module in self.model.named_modules():
+                    if hasattr(module, 'running_mean') and f"{name}.running_mean" in checkpoint:
+                        target_shape = checkpoint[f"{name}.running_mean"].shape
+                        # Re-register the buffer with the correct size
+                        module.register_buffer('running_mean', torch.zeros(target_shape).to(self.device))
+                    
+                    # Repeat for running_var if your SLAYER version uses it
+                    if hasattr(module, 'running_var') and f"{name}.running_var" in checkpoint:
+                        target_shape = checkpoint[f"{name}.running_var"].shape
+                        module.register_buffer('running_var', torch.zeros(target_shape).to(self.device))
+
+        # load the model
+        try:
+            self.model.load_state_dict(checkpoint, strict=True)
+            print(f"Successfully loaded {self.current_arch} weights.")
+        except RuntimeError as e:
+            print(f"Strict load failed: {e}")
+            return False
+            
+        self.model.eval()
+        return True
+    
 
     def predict_character(self, temp_contrast_frame: np.ndarray) -> str:
         """
@@ -127,10 +169,21 @@ class TCASLBackend:
         img = Image.fromarray(temp_contrast_frame)
         input_tensor = self.transform(img).unsqueeze(0).to(self.device)
 
+        if "sdnn" in self.current_arch:
+            input_tensor = input_tensor.unsqueeze(-1)
+
         with torch.no_grad():
             outputs = self.model(input_tensor)
-            _, predicted = torch.max(outputs.data, 1)
-            pred_class = self.classes[predicted.item()]
+    
+        if isinstance(outputs, tuple): # SDNN Case
+            logits, _, _ = outputs
+                # Flatten temporal dimension for CrossEntropy
+            logits = logits.flatten(start_dim=1) 
+        else: # CNN
+            logits = outputs
+
+        _, predicted = torch.max(logits, 1)
+        pred_class = self.classes[predicted.item()]
 
         self.prediction_buffer.append(pred_class)
         return self._get_majority_vote()

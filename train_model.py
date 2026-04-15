@@ -8,15 +8,18 @@ import seaborn as sns
 from sklearn.metrics import confusion_matrix
 from model_registry import LOCAL_MODEL_REGISTRY
 
-TARGET_ARCH = "cnn_v1"
+TARGET_ARCH = "sdnn_nate"
 
 def main() -> None:
     """Executes the complete model training, evaluation, and saving pipeline."""
     DATA_DIR = 'data_nate'
-    BATCH_SIZE = 32
+    BATCH_SIZE=  32
+    BATCH_SIZE_SDNN = 8 # Changed from 32 to 8
     EPOCHS = 15
     LEARNING_RATE = 0.001
+    LEARNING_RATE_SDNN = 0.0001
     IMG_SIZE = 128
+    LAM  = 0.01 # lambda regularization parameter - used in sdnn
     MODEL_PATH = f"{TARGET_ARCH}.pth"
 
     if TARGET_ARCH not in LOCAL_MODEL_REGISTRY:
@@ -29,6 +32,7 @@ def main() -> None:
         transforms.Grayscale(num_output_channels=1),
         transforms.Resize((IMG_SIZE, IMG_SIZE)),
         transforms.ToTensor(),
+        transforms.Normalize((0.5,), (0.5,)) # added this
     ])
 
     full_dataset = datasets.ImageFolder(root=DATA_DIR, transform=transform)
@@ -45,6 +49,11 @@ def main() -> None:
         generator=torch.Generator().manual_seed(42)
     )
 
+    # modify parameters if sdnn
+    if "sdnn" in TARGET_ARCH:
+        BATCH_SIZE = BATCH_SIZE_SDNN
+        LEARNING_RATE = LEARNING_RATE_SDNN
+
     train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
     val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False)
     test_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False)
@@ -53,7 +62,10 @@ def main() -> None:
     model = ModelClass(num_classes).to(device)
     
     criterion = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
+    if "sdnn" in TARGET_ARCH:
+        optimizer = optim.RAdam(model.parameters(), lr= LEARNING_RATE, weight_decay=1e-5)
+    else:
+        optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
 
     train_losses, val_losses = [], []
     train_accs, val_accs = [], []
@@ -64,14 +76,30 @@ def main() -> None:
         running_loss, correct, total = 0.0, 0, 0
         for inputs, labels in train_loader:
             inputs, labels = inputs.to(device), labels.to(device)
+            
+            # modify tensor shape
+            if "sdnn" in TARGET_ARCH:
+                inputs = inputs.unsqueeze(-1)
+            
             optimizer.zero_grad()
             outputs = model(inputs)
-            loss = criterion(outputs, labels)
+
+            # handle sdnn outputs
+            if isinstance(outputs, tuple):  #SDNN
+                logits, event_cost, _ = outputs
+                # Flatten temporal dimension for CrossEntropy
+                logits = logits.flatten(start_dim=1) 
+                loss = criterion(logits, labels) + LAM * event_cost
+            else: #CNN
+                logits = outputs
+                loss = criterion(logits, labels)
+
+            
             loss.backward()
             optimizer.step()
             
             running_loss += loss.item()
-            _, predicted = torch.max(outputs.data, 1)
+            _, predicted = torch.max(logits, 1)
             total += labels.size(0)
             correct += (predicted == labels).sum().item()
             
@@ -82,12 +110,15 @@ def main() -> None:
         val_loss, correct, total = 0.0, 0, 0
         with torch.no_grad():
             for inputs, labels in val_loader:
+                if "sdnn" in TARGET_ARCH: inputs = inputs.unsqueeze(-1)
                 inputs, labels = inputs.to(device), labels.to(device)
+
                 outputs = model(inputs)
-                loss = criterion(outputs, labels)
+                logits = outputs[0].flatten(start_dim=1) if isinstance(outputs, tuple) else outputs
+                loss = criterion(logits, labels)
                 
                 val_loss += loss.item()
-                _, predicted = torch.max(outputs.data, 1)
+                _, predicted = torch.max(logits, 1)
                 total += labels.size(0)
                 correct += (predicted == labels).sum().item()
                 
@@ -104,9 +135,14 @@ def main() -> None:
 
     with torch.no_grad():
         for inputs, labels in test_loader:
+            if "sdnn" in TARGET_ARCH: inputs = inputs.unsqueeze(-1)
             inputs, labels = inputs.to(device), labels.to(device)
             outputs = model(inputs)
-            _, predicted = torch.max(outputs, 1)
+
+            logits = outputs[0] if isinstance(outputs, tuple) else outputs
+            _, predicted = torch.max(logits, 1)
+
+            _, predicted = torch.max(logits, 1)
             all_preds.extend(predicted.cpu().numpy())
             all_labels.extend(labels.cpu().numpy())
 
