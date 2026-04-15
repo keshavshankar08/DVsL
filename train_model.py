@@ -8,11 +8,11 @@ import seaborn as sns
 from sklearn.metrics import confusion_matrix
 from model_registry import LOCAL_MODEL_REGISTRY
 
-TARGET_ARCH = "sdnn_nate"
+TARGET_ARCH = "sdnn_v1"
 
 def main() -> None:
     """Executes the complete model training, evaluation, and saving pipeline."""
-    DATA_DIR = 'data_nate'
+    DATA_DIR = 'data'
     BATCH_SIZE=  32
     BATCH_SIZE_SDNN = 8 # Changed from 32 to 8
     EPOCHS = 15
