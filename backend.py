@@ -11,7 +11,7 @@ from tcasl import TCASL
 from model_registry import LOCAL_MODEL_REGISTRY
 
 class TCASLBackend:
-    def __init__(self, default_arch: str = "sdnn_v1", base_dir: str = "data") -> None:
+    def __init__(self, default_arch: str = "sdnn_v1", base_dir: str = "data_alek") -> None:
         """
         Initializes the development backend with a specific architecture.
 
