@@ -63,9 +63,23 @@ class TCASLFrontend:
         ttk.Label(self.user_frame, text="Realtime ASL Classifier", font=('', 14, 'bold')).pack(pady=5)
         self.btn_test = ttk.Button(self.user_frame, text="Start Predicting", command=self.toggle_testing)
         self.btn_test.pack(pady=5)
-        ttk.Label(self.user_frame, text="Current Sign:").pack()
+        
+        ttk.Label(self.user_frame, text="Current Sign (Majority Vote):").pack()
         self.lbl_current_pred = ttk.Label(self.user_frame, text="-", font=('', 64, 'bold'), foreground="blue")
-        self.lbl_current_pred.pack(pady=20)
+        self.lbl_current_pred.pack(pady=10)
+
+        self.top5_frame = ttk.LabelFrame(self.user_frame, text="Instantaneous Top 5 Confidence", padding=10)
+        self.top5_frame.pack(fill=tk.X, padx=50, pady=5)
+        
+        self.top5_widgets = []
+        for _ in range(5):
+            frame = ttk.Frame(self.top5_frame)
+            frame.pack(fill=tk.X, pady=2)
+            lbl = ttk.Label(frame, text="-: 0.0%", width=10)
+            lbl.pack(side=tk.LEFT)
+            bar = ttk.Progressbar(frame, length=200, mode='determinate', maximum=100)
+            bar.pack(side=tk.LEFT, fill=tk.X, expand=True)
+            self.top5_widgets.append((lbl, bar))
 
     def _setup_admin_view(self) -> None:
         """Configures the data collection control panel."""
@@ -156,6 +170,10 @@ class TCASLFrontend:
         else:
             self.btn_test.config(text="Start Predicting")
             self.lbl_current_pred.config(text="-")
+            
+            for lbl, bar in getattr(self, 'top5_widgets', []):
+                lbl.config(text="-: 0.0%")
+                bar['value'] = 0
 
     def process_video(self) -> None:
         """Main loop for capturing, processing, and displaying frame data."""
@@ -177,8 +195,13 @@ class TCASLFrontend:
                 self.backend.save_frame(tc_frame)
 
             if self.is_testing:
-                pred = self.backend.predict_character(tc_frame)
+                pred, top5 = self.backend.predict_character(tc_frame)
                 self.lbl_current_pred.config(text=pred.upper())
+                
+                for i, (char, prob) in enumerate(top5):
+                    lbl, bar = self.top5_widgets[i]
+                    lbl.config(text=f"{char.upper()}: {prob:.1f}%")
+                    bar['value'] = prob
 
             self.backend.img_initial_gray_resized = frame_gray_resized
 

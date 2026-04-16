@@ -11,7 +11,7 @@ from tcasl import TCASL
 from model_registry import LOCAL_MODEL_REGISTRY
 
 class TCASLBackend:
-    def __init__(self, default_arch: str = "cnn_v1", base_dir: str = "data") -> None:
+    def __init__(self, default_arch: str = "sdnn_v1", base_dir: str = "data") -> None:
         """
         Initializes the development backend with a specific architecture.
 
@@ -19,7 +19,7 @@ class TCASLBackend:
         :param base_dir: The root directory for saving collected image data.
         """
         self.base_dir: str = base_dir
-        self.classes: List[str] = [chr(i) for i in range(ord('a'), ord('z') + 1)] + ['none']
+        self.classes: List[str] = [chr(i) for i in range(ord('a'), ord('z') + 1)]
         self.is_recording: bool = False
         self.last_save_time: float = 0.0
         self.fps_interval: float = 1.0 / 10.0
@@ -154,16 +154,18 @@ class TCASLBackend:
         return True
     
 
-    def predict_character(self, temp_contrast_frame: np.ndarray) -> str:
+    def predict_character(self, temp_contrast_frame: np.ndarray) -> tuple[str, list]:
         """
         Runs local model inference on a processed frame.
-
-        :param temp_contrast_frame: The temporal contrast input array.
-        :return: The predicted string character.
+        Returns a tuple: (majority_vote_string, [(char, confidence_percentage), ...])
         """
         current_time = time.time()
+        
+        if not hasattr(self, 'last_top5'):
+            self.last_top5 = []
+
         if current_time - self.last_pred_time < self.pred_interval:
-            return self._get_majority_vote()
+            return self._get_majority_vote(), self.last_top5
 
         self.last_pred_time = current_time
         img = Image.fromarray(temp_contrast_frame)
@@ -177,16 +179,23 @@ class TCASLBackend:
     
         if isinstance(outputs, tuple): # SDNN Case
             logits, _, _ = outputs
-                # Flatten temporal dimension for CrossEntropy
             logits = logits.flatten(start_dim=1) 
         else: # CNN
             logits = outputs
+
+        probs = torch.softmax(logits, dim=1)[0]
+        top_probs, top_indices = torch.topk(probs, 5)
+        
+        self.last_top5 = [
+            (self.classes[idx.item()], prob.item() * 100) 
+            for prob, idx in zip(top_probs, top_indices)
+        ]
 
         _, predicted = torch.max(logits, 1)
         pred_class = self.classes[predicted.item()]
 
         self.prediction_buffer.append(pred_class)
-        return self._get_majority_vote()
+        return self._get_majority_vote(), self.last_top5
     
     def _get_majority_vote(self) -> str:
         """

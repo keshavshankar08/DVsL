@@ -1,5 +1,5 @@
-numpy
-opencv-python
+numpy>=2.0
+opencv-python<4.11
 pillow
 torch
 torchvision

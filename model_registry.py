@@ -2,22 +2,17 @@ import torch.nn as nn
 from torch import Tensor
 from typing import Dict, Type
 import torch
-import torch.nn.functional as F
-
-# New libraries @keshavshankar08
+import torch.nn.functional as fnc
 import lava.lib.dl.slayer as slayer
-# h5py
 
-
-
-class BaseCNN(nn.Module):
+class CNN(nn.Module):
     def __init__(self, num_classes: int) -> None:
         """
         Initializes the CNN layers.
 
         :param num_classes: The number of output classes for prediction.
         """
-        super(BaseCNN, self).__init__()
+        super(CNN, self).__init__()
         self.conv_layers = nn.Sequential(
             nn.Conv2d(1, 16, kernel_size=3, padding=1),
             nn.ReLU(),
@@ -59,7 +54,7 @@ class SDNN(nn.Module):
             'scale_grad'    : 1,      # delta unit surrogate gradient scale parameter
             'requires_grad' : True,   # trainable threshold
             'shared_param'  : True,   # layer wise threshold
-            'activation'    : F.relu, # activation function
+            'activation'    : fnc.relu, # activation function
         }
         sdnn_cnn_params = { # conv layer has additional mean only batch norm
                 **sdnn_params,                                 # copy all sdnn_params
@@ -92,7 +87,7 @@ class SDNN(nn.Module):
         # Event sparsity loss: penalizes network for high-rate events
     def event_rate_loss(self, x, max_rate=0.01):
         mean_event_rate = torch.mean(torch.abs(x))
-        return F.mse_loss(F.relu(mean_event_rate - max_rate), torch.zeros_like(mean_event_rate))
+        return fnc.mse_loss(fnc.relu(mean_event_rate - max_rate), torch.zeros_like(mean_event_rate))
         
     def forward(self, x):
         count = []
@@ -108,13 +103,7 @@ class SDNN(nn.Module):
     
         return x, event_cost, torch.FloatTensor(count).reshape((1, -1)).to(x.device)
 
-
-
-    
-
-# Add your new architectures here
 LOCAL_MODEL_REGISTRY: Dict[str, Type[nn.Module]] = {
-    "cnn_v1": BaseCNN,
+    "cnn_v1": CNN,
     "sdnn_v1": SDNN,
-    "sdnn_nate": SDNN
 }
