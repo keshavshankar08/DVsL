@@ -1,4 +1,4 @@
-numpy>=2.0
+numpy<2.0.0
 opencv-python<4.11
 pillow
 torch
@@ -8,3 +8,4 @@ scikit-learn
 seaborn
 customtkinter
 tcasl
+lava-dl
