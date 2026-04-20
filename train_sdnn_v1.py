@@ -58,7 +58,7 @@ def main() -> None:
     val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False)
     test_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False)
 
-    ModelClass = MODEL_REGISTRY[TARGET_ARCH]
+    ModelClass = MODEL_REGISTRY[TARGET_ARCH]["class"]
     model = ModelClass(num_classes).to(device)
     
     criterion = nn.CrossEntropyLoss()
@@ -87,11 +87,10 @@ def main() -> None:
             # handle sdnn outputs
             if isinstance(outputs, tuple):  #SDNN
                 logits, event_cost, _ = outputs
-                # Flatten temporal dimension for CrossEntropy
                 logits = logits.flatten(start_dim=1) 
                 loss = criterion(logits, labels) + LAM * event_cost
             else: #CNN
-                logits = outputs
+                logits = outputs.flatten(start_dim=1)
                 loss = criterion(logits, labels)
 
             
@@ -115,6 +114,7 @@ def main() -> None:
 
                 outputs = model(inputs)
                 logits = outputs[0].flatten(start_dim=1) if isinstance(outputs, tuple) else outputs
+                logits = logits.flatten(start_dim=1)
                 loss = criterion(logits, labels)
                 
                 val_loss += loss.item()
@@ -140,6 +140,7 @@ def main() -> None:
             outputs = model(inputs)
 
             logits = outputs[0].flatten(start_dim=1) if isinstance(outputs, tuple) else outputs
+            logits = logits.flatten(start_dim=1)
             
             _, predicted = torch.max(logits, 1)
             all_preds.extend(predicted.cpu().numpy())
