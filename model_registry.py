@@ -106,5 +106,11 @@ MODEL_REGISTRY: Dict[str, Dict] = {
         },
     "cnn_v1": {
         "class": BaseCNN,
-        }
+        },
+    "cnn_k-means_4-bit": {
+        "class": BaseCNN,
+    },
+    "cnn_ptq_int8": {
+        "class": BaseCNN,
+    }
 }

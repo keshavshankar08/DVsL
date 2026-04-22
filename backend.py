@@ -56,7 +56,7 @@ class TCASLBackend:
             print(f"Warning: {path} not found.")
             return False
     
-        checkpoint = torch.load(path, map_location=self.device, weights_only=True)
+        checkpoint = torch.load(path, map_location=self.device, weights_only=False)
         
         # Streamlined SDNN buffer patch
         if "sdnn" in self.current_arch:
