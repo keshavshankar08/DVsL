@@ -1,170 +1,85 @@
 import os
 import time
-import cv2 as cv
 import numpy as np
 import torch
 from torchvision import transforms
 from collections import deque
 from PIL import Image
-from typing import Optional, List
+from typing import List, Tuple
 from tcasl import TCASL
-from model_registry import LOCAL_MODEL_REGISTRY
+from model_registry import MODEL_REGISTRY
 
 class TCASLBackend:
-    def __init__(self, default_arch: str = "sdnn_v1", base_dir: str = "data_theresa") -> None:
-        """
-        Initializes the development backend with a specific architecture.
-
-        :param default_arch: The string identifier for the target architecture.
-        :param base_dir: The root directory for saving collected image data.
-        """
-        self.base_dir: str = base_dir
-        self.classes: List[str] = [chr(i) for i in range(ord('a'), ord('z') + 1)]
-        self.is_recording: bool = False
-        self.last_save_time: float = 0.0
-        self.fps_interval: float = 1.0 / 10.0
-        self.current_target_class: str = 'a'
-        self.img_initial_gray_resized: Optional[np.ndarray] = None
-        self.current_arch: str = default_arch
-        
-        self.tcasl_engine = TCASL()
+    def __init__(self, default_arch: str = "sdnn_v1", base_dir: str = "data") -> None:
+        self.base_dir = base_dir
+        self.classes = [chr(i) for i in range(ord('a'), ord('z') + 1)]
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        
+        # State Management
+        self.is_recording = False
+        self.last_save_time = 0.0
+        self.current_target_class = 'a'
+        self.img_initial = None
+        self.current_arch = default_arch
+        
+        # Prediction State
+        self.prediction_buffer = deque(maxlen=30)
+        self.last_pred_time = 0.0
+        self.last_top5 = []
+
+        # Core Engine for preprocessing & temporal contrast
+        self.tcasl_engine = TCASL() 
         
         self.transform = transforms.Compose([
             transforms.Grayscale(num_output_channels=1),
             transforms.Resize((128, 128)),
             transforms.ToTensor(),
-            transforms.Normalize((0.5,), (0.5,)) # added this
-            ])
+            transforms.Normalize((0.5,), (0.5,))
+        ])
 
-
-        self.prediction_buffer: deque = deque(maxlen=30)
-        self.last_pred_time: float = 0.0
-        self.pred_interval: float = 1.0 / 30.0
-
-        self._setup_directories()
-        self.set_architecture(self.current_arch)
-
-    def _setup_directories(self) -> None:
-        """Creates target directories for all classification classes."""
+        # Setup and Load
         for cls in self.classes:
             os.makedirs(os.path.join(self.base_dir, cls), exist_ok=True)
+        self.set_architecture(self.current_arch)
 
     def set_architecture(self, arch: str) -> bool:
-        """
-        Switches the active neural network architecture.
-
-        :param arch: The string key of the architecture from the registry.
-        :return: True if successful, False if the architecture is not found.
-        """
-        if arch not in LOCAL_MODEL_REGISTRY:
+        if arch not in MODEL_REGISTRY:
             return False
-            
         self.current_arch = arch
-        ModelClass = LOCAL_MODEL_REGISTRY[arch]
-
-        self.model = ModelClass(len(self.classes)).to(self.device)
-
+        self.model = MODEL_REGISTRY[arch]["class"](len(self.classes)).to(self.device)        
         self.load_model()
         return True
 
-    def process_frame(self, frame_gray: np.ndarray) -> np.ndarray:
-        """
-        Resizes the frame using the core engine logic.
-
-        :param frame_gray: Grayscale input frame.
-        :return: Cropped and resized 128x128 frame.
-        """
-        return self.tcasl_engine.preprocess_frame(frame_gray)
-
-    def temporal_contrast(self, image_initial: np.ndarray, image: np.ndarray) -> np.ndarray:
-        """
-        Computes the temporal contrast between two frames using the core engine.
-
-        :param image_initial: The previous frame.
-        :param image: The current frame.
-        :return: A trinary temporal contrast frame.
-        """
-        return self.tcasl_engine.compute_temporal_contrast(image_initial, image)
-
-    def save_frame(self, frame: np.ndarray) -> None:
-        """
-        Saves the current frame to disk if recording is active.
-
-        :param frame: The processed frame to save.
-        """
-        if not self.is_recording:
-            return
-
-        current_time = time.time()
-        if current_time - self.last_save_time >= self.fps_interval:
-            filename = f"{current_time:.4f}.png"
-            filepath = os.path.join(self.base_dir, self.current_target_class, filename)
-            cv.imwrite(filepath, frame)
-            self.last_save_time = current_time
-
     def load_model(self) -> bool:
-        """
-        Loads local model weights into the currently active architecture.
-
-        :return: True if successful, False otherwise.
-        """
         path = f"{self.current_arch}.pth"
         if not os.path.exists(path):
             print(f"Warning: {path} not found.")
             return False
     
-        # 1. Load the checkpoint
         checkpoint = torch.load(path, map_location=self.device, weights_only=True)
         
-        # Special set up for sdnn loading case
+        # Streamlined SDNN buffer patch
         if "sdnn" in self.current_arch:
-            model_state = self.model.state_dict()
-            updated_model_state = model_state.copy()
-            has_updates = False
+            for name, module in self.model.named_modules():
+                for attr in ['running_mean', 'running_var']:
+                    if hasattr(module, attr) and f"{name}.{attr}" in checkpoint:
+                        target_shape = checkpoint[f"{name}.{attr}"].shape
+                        module.register_buffer(attr, torch.zeros(target_shape).to(self.device))
 
-            for key, val in checkpoint.items():
-                if key in model_state:
-                    if val.shape != model_state[key].shape:
-                        # This specifically targets running_mean/running_var mismatch
-                        updated_model_state[key] = torch.zeros_like(val)
-                        has_updates = True
-
-            if has_updates:
-                for name, module in self.model.named_modules():
-                    if hasattr(module, 'running_mean') and f"{name}.running_mean" in checkpoint:
-                        target_shape = checkpoint[f"{name}.running_mean"].shape
-                        # Re-register the buffer with the correct size
-                        module.register_buffer('running_mean', torch.zeros(target_shape).to(self.device))
-                    
-                    # Repeat for running_var if your SLAYER version uses it
-                    if hasattr(module, 'running_var') and f"{name}.running_var" in checkpoint:
-                        target_shape = checkpoint[f"{name}.running_var"].shape
-                        module.register_buffer('running_var', torch.zeros(target_shape).to(self.device))
-
-        # load the model
         try:
             self.model.load_state_dict(checkpoint, strict=True)
+            self.model.eval()
             print(f"Successfully loaded {self.current_arch} weights.")
+            return True
         except RuntimeError as e:
             print(f"Strict load failed: {e}")
             return False
-            
-        self.model.eval()
-        return True
-    
 
-    def predict_character(self, temp_contrast_frame: np.ndarray) -> tuple[str, list]:
-        """
-        Runs local model inference on a processed frame.
-        Returns a tuple: (majority_vote_string, [(char, confidence_percentage), ...])
-        """
+    def predict_character(self, temp_contrast_frame: np.ndarray) -> Tuple[str, List]:
         current_time = time.time()
         
-        if not hasattr(self, 'last_top5'):
-            self.last_top5 = []
-
-        if current_time - self.last_pred_time < self.pred_interval:
+        # Throttle predictions to 30 FPS
+        if current_time - self.last_pred_time < (1.0 / 30.0):
             return self._get_majority_vote(), self.last_top5
 
         self.last_pred_time = current_time
@@ -176,37 +91,20 @@ class TCASLBackend:
 
         with torch.no_grad():
             outputs = self.model(input_tensor)
-    
-        if isinstance(outputs, tuple): # SDNN Case
-            logits, _, _ = outputs
+            
+            logits = outputs[0] if isinstance(outputs, tuple) else outputs
             logits = logits.flatten(start_dim=1) 
-        else: # CNN
-            logits = outputs
 
         probs = torch.softmax(logits, dim=1)[0]
         top_probs, top_indices = torch.topk(probs, 5)
         
-        self.last_top5 = [
-            (self.classes[idx.item()], prob.item() * 100) 
-            for prob, idx in zip(top_probs, top_indices)
-        ]
+        self.last_top5 = [(self.classes[idx.item()], prob.item() * 100) for prob, idx in zip(top_probs, top_indices)]
+        self.prediction_buffer.append(self.classes[torch.argmax(logits, 1).item()])
 
-        _, predicted = torch.max(logits, 1)
-        pred_class = self.classes[predicted.item()]
-
-        self.prediction_buffer.append(pred_class)
         return self._get_majority_vote(), self.last_top5
     
     def _get_majority_vote(self) -> str:
-        """
-        Calculates the most common prediction in the current buffer window.
-
-        :return: The majority class string.
-        """
-        if not self.prediction_buffer:
-            return "-"
-        return max(set(self.prediction_buffer), key=self.prediction_buffer.count)
+        return max(set(self.prediction_buffer), key=self.prediction_buffer.count) if self.prediction_buffer else "-"
     
     def clear_buffer(self) -> None:
-        """Empties the prediction queue."""
         self.prediction_buffer.clear()

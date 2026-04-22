@@ -6,7 +6,7 @@ from torchvision import datasets, transforms
 import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.metrics import confusion_matrix
-from model_registry import LOCAL_MODEL_REGISTRY
+from model_registry import MODEL_REGISTRY
 
 TARGET_ARCH = "sdnn_v1"
 
@@ -22,7 +22,7 @@ def main() -> None:
     LAM  = 0.01 # lambda regularization parameter - used in sdnn
     MODEL_PATH = f"{TARGET_ARCH}.pth"
 
-    if TARGET_ARCH not in LOCAL_MODEL_REGISTRY:
+    if TARGET_ARCH not in MODEL_REGISTRY:
         raise ValueError(f"Architecture '{TARGET_ARCH}' not found in model_registry.")
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -58,7 +58,7 @@ def main() -> None:
     val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False)
     test_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False)
 
-    ModelClass = LOCAL_MODEL_REGISTRY[TARGET_ARCH]
+    ModelClass = MODEL_REGISTRY[TARGET_ARCH]["class"]
     model = ModelClass(num_classes).to(device)
     
     criterion = nn.CrossEntropyLoss()
@@ -87,11 +87,10 @@ def main() -> None:
             # handle sdnn outputs
             if isinstance(outputs, tuple):  #SDNN
                 logits, event_cost, _ = outputs
-                # Flatten temporal dimension for CrossEntropy
                 logits = logits.flatten(start_dim=1) 
                 loss = criterion(logits, labels) + LAM * event_cost
             else: #CNN
-                logits = outputs
+                logits = outputs.flatten(start_dim=1)
                 loss = criterion(logits, labels)
 
             
@@ -115,6 +114,7 @@ def main() -> None:
 
                 outputs = model(inputs)
                 logits = outputs[0].flatten(start_dim=1) if isinstance(outputs, tuple) else outputs
+                logits = logits.flatten(start_dim=1)
                 loss = criterion(logits, labels)
                 
                 val_loss += loss.item()
@@ -139,9 +139,9 @@ def main() -> None:
             inputs, labels = inputs.to(device), labels.to(device)
             outputs = model(inputs)
 
-            logits = outputs[0] if isinstance(outputs, tuple) else outputs
-            _, predicted = torch.max(logits, 1)
-
+            logits = outputs[0].flatten(start_dim=1) if isinstance(outputs, tuple) else outputs
+            logits = logits.flatten(start_dim=1)
+            
             _, predicted = torch.max(logits, 1)
             all_preds.extend(predicted.cpu().numpy())
             all_labels.extend(labels.cpu().numpy())
