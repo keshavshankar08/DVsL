@@ -1,0 +1,2 @@
+sdnn test set accuracy:
+base cnn test set accuracy:

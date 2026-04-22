@@ -4,6 +4,61 @@ import torch
 import torch.nn.functional as fnc
 import lava.lib.dl.slayer as slayer
 
+class BaseCNN(nn.Module):
+    def __init__(self, num_classes: int) -> None:
+        """
+        Initializes the CNN layers.
+
+        :param num_classes: The number of output classes for prediction.
+        """
+        super(BaseCNN, self).__init__()
+
+        self.conv_layers = nn.Sequential(
+            # Block 1: Matches SDNN Conv1
+            nn.Conv2d(1, 24, kernel_size=3, padding=0, stride=2),
+            nn.BatchNorm2d(24), # Mirrors Slayer's MeanOnlyBatchNorm
+            nn.ReLU(),
+            
+            # Block 2: Matches SDNN Conv2
+            nn.Conv2d(24, 36, kernel_size=3, padding=0, stride=2),
+            nn.BatchNorm2d(36),
+            nn.ReLU(),
+            
+            # Block 3: Matches SDNN Conv3 (Asymmetrical padding/stride)
+            nn.Conv2d(36, 64, kernel_size=3, padding=(1, 0), stride=(2, 1)),
+            nn.BatchNorm2d(64),
+            nn.ReLU(),
+            
+            # Block 4: Matches SDNN Conv4
+            nn.Conv2d(64, 64, kernel_size=3, padding=0, stride=1),
+            nn.BatchNorm2d(64),
+            nn.ReLU()
+        )
+        
+        self.fc_layers = nn.Sequential(
+            nn.Flatten(),
+            
+            # Block 5: Matches SDNN Dense 1
+            nn.Linear(24192, 100),
+            nn.BatchNorm1d(100),
+            nn.ReLU(),
+            nn.Dropout(0.2), # Matched to sdnn_dense_params
+            
+            # Block 6: Matches SDNN Dense 2
+            nn.Linear(100, 50),
+            nn.BatchNorm1d(50),
+            nn.ReLU(),
+            nn.Dropout(0.2),
+            
+            # Block 7: Output Layer
+            nn.Linear(50, num_classes)
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.conv_layers(x)
+        x = self.fc_layers(x)
+        return x
+
 class BaseSDNN(nn.Module):
     def __init__(self, num_classes: int) -> None:
         super(BaseSDNN, self).__init__()
@@ -47,6 +102,9 @@ class BaseSDNN(nn.Module):
 MODEL_REGISTRY: Dict[str, Dict] = {
     "sdnn_v1": {
         "class": BaseSDNN,
-        "url": "https://github.com/keshavshankar08/TCASLCore/releases/download/v1.0.0/sdnn_v1.pth" 
-    }
+        "url": "https://github.com/keshavshankar08/TCASLCore/releases/download/v1.0.0/sdnn_v1.pth"
+        },
+    "cnn_v1": {
+        "class": BaseCNN,
+        }
 }
