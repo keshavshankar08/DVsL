@@ -12,28 +12,48 @@ import io
 # 1. Linear Post-Training Quantization (PTQ - INT8)
 # ==============================================================================
 def apply_ptq_linear(model: nn.Module, dummy_input_shape=(1, 1, 128, 128)) -> nn.Module:
-    """
-    Applies standard PyTorch INT8 static quantization.
-    Requires a calibration step with representative data to calculate activation scales.
-    """
-    ptq_model = copy.deepcopy(model)
+    """Applies standard PyTorch INT8 static quantization with Module Fusion."""
+    ptq_model = QuantWrapper(copy.deepcopy(model))
     ptq_model.eval()
     
-    # Set the quantization engine (qnnpack is standard for edge/mobile CPU simulation)
+    # Standard engine for x86 CPU
     torch.backends.quantized.engine = 'fbgemm'
+
+    # --- MODULE FUSION ---
+    # We must fuse Conv+BN+ReLU or Linear+BN+ReLU triplets.
+    # The strings refer to the attribute paths within 'ptq_model'.
+    
+    fusion_list = [
+        # conv_layers fusion (Triplets of Conv, BN, ReLU)
+        ['model.conv_layers.0', 'model.conv_layers.1', 'model.conv_layers.2'],
+        ['model.conv_layers.3', 'model.conv_layers.4', 'model.conv_layers.5'],
+        ['model.conv_layers.6', 'model.conv_layers.7', 'model.conv_layers.8'],
+        ['model.conv_layers.9', 'model.conv_layers.10', 'model.conv_layers.11'],
+        
+        # fc_layers fusion (Triplets of Linear, BN, ReLU)
+        ['model.fc_layers.1', 'model.fc_layers.2', 'model.fc_layers.3'],
+        ['model.fc_layers.5', 'model.fc_layers.6', 'model.fc_layers.7'],
+    ]
+    
+    # Perform the fusion
+    ptq_model = torch.ao.quantization.fuse_modules(ptq_model, fusion_list)
+    # ---------------------
+
+    # Set quantization configuration
     ptq_model.qconfig = quant.get_default_qconfig('fbgemm')
     
-    # Insert observers to calibrate activations
+    # Prepare inserts observers
     quant.prepare(ptq_model, inplace=True)
     
-    # CALIBRATION: Pass representative data through the model.
+    # Calibration: Pass a few batches through the model so observers can pick up ranges
     with torch.no_grad():
-        for _ in range(10): # 10 calibration batches is usually enough
-            dummy_data = torch.randn(8, *dummy_input_shape[1:]) # Batch size 8
+        for _ in range(10):
+            dummy_data = torch.randn(8, *dummy_input_shape[1:])
             ptq_model(dummy_data)
             
-    # Convert observed model to quantized INT8 model
+    # Convert: Turn observers into actual quantized operations
     quant.convert(ptq_model, inplace=True)
+    
     return ptq_model
 
 # ==============================================================================
@@ -124,45 +144,138 @@ def compare_architectures(base_sdnn: nn.Module, base_cnn: nn.Module,
     print(f"{'CNN PTQ K-Means (~4-bit)':<25} | {cnn_params:<15,} | {cnn_kmeans_size:<15.3f}")
     print("-" * 65)
 
+def save_quantized_models(cnn_ptq_linear, cnn_ptq_kmeans):
+    # Save K-Means (it's still a standard FP32 model structure, just with clustered values)
+    torch.save(cnn_ptq_kmeans.state_dict(), "cnn_ptq_kmeans.pth")
+    
+    # Save Linear PTQ (INT8) - Using TorchScript is safest for quantized models
+    try:
+        # We use a dummy input to trace the model for export
+        dummy_input = torch.randn(1, 1, 128, 128)
+        traced_model = torch.jit.trace(cnn_ptq_linear, dummy_input)
+        torch.jit.save(traced_model, "cnn_ptq_linear_int8.pt")
+        print("Linear PTQ saved as TorchScript (.pt)")
+    except Exception as e:
+        print(f"TorchScript export failed, saving state_dict instead: {e}")
+        torch.save(cnn_ptq_linear.state_dict(), "cnn_ptq_linear_stat_dict.pth")
+
+
+from fvcore.nn import FlopCountAnalysis
+
+def get_model_flops(model, dummy_input):
+    model.eval()
+    flops = FlopCountAnalysis(model, dummy_input)
+    return flops.total()
+
+def evaluate_model(model, loader, device, is_sdnn=False, is_int8=False):
+    model.eval()
+    correct = 0
+    total = 0
+    
+    with torch.no_grad():
+        for inputs, labels in loader:
+            # 1. Handle SDNN input shape
+            if is_sdnn:
+                inputs = inputs.unsqueeze(-1)
+            
+            # 2. Move to device (Note: INT8 PTQ models usually run on CPU)
+            if not is_int8:
+                inputs, labels = inputs.to(device), labels.to(device)
+            else:
+                inputs, labels = inputs.cpu(), labels.cpu()
+                model.cpu()
+
+            outputs = model(inputs)
+            
+            # 3. Handle SDNN output tuple
+            logits = outputs[0] if isinstance(outputs, tuple) else outputs
+            logits = logits.flatten(start_dim=1)
+            
+            _, predicted = torch.max(logits, 1)
+            total += labels.size(0)
+            correct += (predicted == labels).sum().item()
+            
+    return 100 * correct / total
+
+
 # ==============================================================================
 # Main Execution Block
 # ==============================================================================
 if __name__ == "__main__":
     num_classes = 26
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    dummy_input = torch.randn(1, 1, 128, 128)
+    
+    # 1. Initialize Models
     base_sdnn = BaseSDNN(num_classes=num_classes)
     base_cnn = BaseCNN(num_classes=num_classes)
 
+    # 2. Load Weights (Your existing logic)
     print("Loading pre-trained weights...")
     if os.path.exists("sdnn_v1.pth") and os.path.exists("cnn_v1.pth"):
-        # Load checkpoints to CPU memory first
         sdnn_checkpoint = torch.load("sdnn_v1.pth", map_location='cpu', weights_only=True)
         cnn_checkpoint = torch.load("cnn_v1.pth", map_location='cpu', weights_only=True)
 
-        # --- Dynamic SLAYER Buffer Patch ---
         for name, module in base_sdnn.named_modules():
             for attr in ['running_mean', 'running_var']:
                 if hasattr(module, attr) and f"{name}.{attr}" in sdnn_checkpoint:
                     target_shape = sdnn_checkpoint[f"{name}.{attr}"].shape
                     module.register_buffer(attr, torch.zeros(target_shape))
         
-        # Load the patched states
-        try:
-            base_sdnn.load_state_dict(sdnn_checkpoint, strict=True)
-            base_cnn.load_state_dict(cnn_checkpoint, strict=True)
-            base_sdnn.eval()
-            base_cnn.eval()
-            print("Weights loaded successfully!")
-        except RuntimeError as e:
-            print(f"Failed to load weights: {e}")
+        base_sdnn.load_state_dict(sdnn_checkpoint)
+        base_cnn.load_state_dict(cnn_checkpoint)
+        print("Weights loaded successfully!")
     else:
-        print("Warning: .pth files not found in the current directory. Using randomly initialized weights.")
+        print("Warning: Weights not found. Using random init.")
 
-    # Generate Quantized CNNs
+    # 3. Apply Quantization
     print("\nGenerating INT8 Linear PTQ Model...")
+    # Note: PTQ Linear usually stays on CPU for inference simulation
     cnn_ptq_linear = apply_ptq_linear(base_cnn, dummy_input_shape=(1, 1, 128, 128))
 
-    print("Generating 4-bit K-Means PTQ Model...\n")
+    print("Generating 4-bit K-Means PTQ Model...")
     cnn_ptq_kmeans = apply_ptq_kmeans(base_cnn, n_clusters=16)
 
-    # Run size comparison script
-    compare_architectures(base_sdnn, base_cnn, cnn_ptq_linear, cnn_ptq_kmeans)
+    # 4. Prepare Evaluation Dictionary
+    # Mapping: { "Name": (model_instance, is_sdnn, is_int8) }
+    models_to_test = {
+        "Base SDNN (FP32)": (base_sdnn.to(device), True, False),
+        "Base CNN (FP32)": (base_cnn.to(device), False, False),
+        "CNN PTQ (INT8)": (cnn_ptq_linear.cpu(), False, True), # INT8 runs on CPU
+        "CNN K-Means (4-bit)": (cnn_ptq_kmeans.to(device), False, False),
+    }
+
+    # 5. Export, Measure FLOPs, and Evaluate Accuracy
+    print("\n" + "="*80)
+    print(f"{'Model Architecture':<25} | {'Acc (%)':<10} | {'Size (MB)':<10} | {'FLOPs':<10}")
+    print("-" * 80)
+
+    for name, (model, is_sdnn, is_int8) in models_to_test.items():
+        # A. Measure Accuracy (using the evaluate_model function from previous response)
+        # Assuming test_loader is defined globally or passed in
+        accuracy = evaluate_model(model, test_loader, device, is_sdnn, is_int8)
+
+        # B. Measure Size
+        if "K-Means" in name:
+            size_mb = get_kmeans_theoretical_size_mb(model)
+        else:
+            size_mb = get_model_size_mb(model)
+
+        # C. Measure FLOPs (Theoretical)
+        # We use CPU for FLOP counting to avoid device mismatch issues
+        model_cpu = copy.deepcopy(model).cpu()
+        flops = FlopCountAnalysis(model_cpu, dummy_input).total()
+        
+        print(f"{name:<25} | {accuracy:<10.2f} | {size_mb:<10.3f} | {flops/1e6:<9.1f}M")
+
+        # D. Export to disk
+        save_path = f"exported_{name.replace(' ', '_').lower()}.pth"
+        if is_int8:
+            # Use TorchScript for the converted INT8 model
+            traced = torch.jit.trace(model, dummy_input)
+            torch.jit.save(traced, save_path.replace(".pth", ".pt"))
+        else:
+            torch.save(model.state_dict(), save_path)
+
+    print("="*80)
+    print("Evaluation and Export complete.")
