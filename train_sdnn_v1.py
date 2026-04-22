@@ -143,8 +143,16 @@ def main() -> None:
             logits = logits.flatten(start_dim=1)
             
             _, predicted = torch.max(logits, 1)
+
+            # measuring 10% held out test accuracy
+            test_total += labels.size(0)
+            test_correct += (predicted == labels).sum().item()
+
             all_preds.extend(predicted.cpu().numpy())
             all_labels.extend(labels.cpu().numpy())
+
+    test_accuracy = 100.0 * test_correct / test_total
+    print(f"Test Set Accuracy: {test_accuracy:.3f}%")
 
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
     ax1.plot(train_losses, label='Train Loss')
