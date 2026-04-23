@@ -7,7 +7,9 @@ from collections import deque
 from PIL import Image
 from typing import List, Tuple
 from tcasl import TCASL
-from model_registry import MODEL_REGISTRY
+from model_registry import MODEL_REGISTRY, BaseCNN, QuantWrapper
+import torch.ao.quantization as quant
+from train_cnn_and_quant_v1 import fold_bn_into_linear, _conv_fusion_list
 
 class TCASLBackend:
     def __init__(self, default_arch: str = "sdnn_v1", base_dir: str = "data") -> None:
@@ -51,30 +53,55 @@ class TCASLBackend:
         return True
 
     def load_model(self) -> bool:
-        path = f"{self.current_arch}.pth"
-        if not os.path.exists(path):
-            print(f"Warning: {path} not found.")
-            return False
-    
-        checkpoint = torch.load(path, map_location=self.device, weights_only=False)
+            path = f"{self.current_arch}.pth"
+            if not os.path.exists(path):
+                print(f"Warning: {path} not found.")
+                return False
         
-        # Streamlined SDNN buffer patch
-        if "sdnn" in self.current_arch:
-            for name, module in self.model.named_modules():
-                for attr in ['running_mean', 'running_var']:
-                    if hasattr(module, attr) and f"{name}.{attr}" in checkpoint:
-                        target_shape = checkpoint[f"{name}.{attr}"].shape
-                        module.register_buffer(attr, torch.zeros(target_shape).to(self.device))
+            checkpoint = torch.load(path, map_location=self.device, weights_only=False)
+            
+            # Streamlined SDNN buffer patch
+            if "sdnn" in self.current_arch:
+                for name, module in self.model.named_modules():
+                    for attr in ['running_mean', 'running_var']:
+                        if hasattr(module, attr) and f"{name}.{attr}" in checkpoint:
+                            target_shape = checkpoint[f"{name}.{attr}"].shape
+                            module.register_buffer(attr, torch.zeros(target_shape).to(self.device))
+            
+            if "int8" in self.current_arch or "quant" in self.current_arch:
+# 1. Instantiate the base model
+                base_model = BaseCNN(num_classes=26).to(self.device)
+                base_model.eval()
+                
+                # 2. MUST MATCH TRAINING: Fold the BatchNorm1d layers
+                base_model = fold_bn_into_linear(base_model)
+                
+                # 3. Wrap the model
+                self.model = QuantWrapper(base_model).to(self.device)
+                self.model.eval()
+                
+                # 4. MUST MATCH TRAINING: Fuse Conv2d + BatchNorm2d + ReLU
+                quant.fuse_modules(self.model, _conv_fusion_list(), inplace=True)
+                
+                # 5. Prepare and convert
+                self.model.qconfig = quant.get_default_qconfig('fbgemm') 
+                quant.prepare(self.model, inplace=True)
+                quant.convert(self.model, inplace=True)
+                
+                # 6. Now the architecture matches the state_dict perfectly!
+                self.model.load_state_dict(checkpoint, strict=True)
+                print(f"Successfully loaded {self.current_arch} INT8 state_dict.")
+                return True
 
-        try:
-            self.model.load_state_dict(checkpoint, strict=True)
-            self.model.eval()
-            print(f"Successfully loaded {self.current_arch} weights.")
-            return True
-        except RuntimeError as e:
-            print(f"Strict load failed: {e}")
-            return False
-
+            try:
+                self.model.load_state_dict(checkpoint, strict=True)
+                self.model.eval()
+                print(f"Successfully loaded {self.current_arch} weights.")
+                return True
+            except RuntimeError as e:
+                print(f"Strict load failed: {e}")
+                return False
+    
     def predict_character(self, temp_contrast_frame: np.ndarray) -> Tuple[str, List]:
         current_time = time.time()
         

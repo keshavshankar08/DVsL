@@ -14,7 +14,7 @@ from sklearn.metrics import confusion_matrix
 from sklearn.cluster import KMeans
 from fvcore.nn import FlopCountAnalysis
 
-from model_registry import MODEL_REGISTRY, BaseCNN
+from model_registry import MODEL_REGISTRY, BaseCNN, QuantWrapper
 
 # ==============================================================================
 # Global Configuration
@@ -156,16 +156,16 @@ def evaluate_and_plot(model, test_loader, classes):
 # ==============================================================================
 # Quantization
 # ==============================================================================
-class QuantWrapper(nn.Module):
-    """Wraps a CNN with QuantStub / DeQuantStub for INT8 PTQ."""
-    def __init__(self, model):
-        super().__init__()
-        self.quant   = quant.QuantStub()
-        self.model   = model
-        self.dequant = quant.DeQuantStub()
+# class QuantWrapper(nn.Module):
+#     """Wraps a CNN with QuantStub / DeQuantStub for INT8 PTQ."""
+#     def __init__(self, model):
+#         super().__init__()
+#         self.quant   = quant.QuantStub()
+#         self.model   = model
+#         self.dequant = quant.DeQuantStub()
 
-    def forward(self, x):
-        return self.dequant(self.model(self.quant(x)))
+#     def forward(self, x):
+#         return self.dequant(self.model(self.quant(x)))
 
 
 def fold_bn_into_linear(model: nn.Module) -> nn.Module:
@@ -496,12 +496,7 @@ if __name__ == "__main__":
         # ── Export ────────────────────────────────────────────────────────
         save_path = f"exported_{name.lower().replace(' ', '_').replace('(', '').replace(')', '')}.pth"
         if is_int8:
-            # torch.jit.trace is incompatible with quantized models that carry
-            # residual observer hooks (e.g. from fvcore FlopCountAnalysis).
-            # torch.save(model) serialises the full quantized object — the
-            # recommended approach for PTQ INT8 deployment.
-            # Reload with: model = torch.load("file.pth"); model.eval()
-            torch.save(model, save_path)
+            torch.save(model.state_dict(), save_path)
             print(f"  Saved quantized model → {save_path}")
         else:
             torch.save(model.state_dict(), save_path)

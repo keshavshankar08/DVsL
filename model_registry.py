@@ -4,6 +4,21 @@ import torch
 import torch.nn.functional as fnc
 import lava.lib.dl.slayer as slayer
 
+import torch.ao.quantization as quant
+
+# Add the class definition
+class QuantWrapper(nn.Module):
+    """Wraps a CNN with QuantStub / DeQuantStub for INT8 PTQ."""
+    def __init__(self, model):
+        super().__init__()
+        self.quant   = quant.QuantStub()
+        self.model   = model
+        self.dequant = quant.DeQuantStub()
+
+    def forward(self, x):
+        return self.dequant(self.model(self.quant(x)))
+
+
 class BaseCNN(nn.Module):
     def __init__(self, num_classes: int) -> None:
         """
