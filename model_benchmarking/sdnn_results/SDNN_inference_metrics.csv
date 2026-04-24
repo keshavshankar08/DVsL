@@ -1,0 +1,4 @@
+Dataset,Avg_Latency_ms,FPS,Model_Size_MB
+MNIST_DVS,4.68,213.47,1.17
+N_MNIST,4.30,232.57,1.17
+TCASL,4.68,213.70,1.17
