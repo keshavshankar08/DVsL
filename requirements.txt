@@ -3,9 +3,4 @@ opencv-python<4.11
 pillow
 torch
 torchvision
-matplotlib
-scikit-learn
-seaborn
 customtkinter
-tcasl
-lava-dl

@@ -6,13 +6,15 @@ from torchvision import transforms
 from collections import deque
 from PIL import Image
 from typing import List, Tuple
+import torch.ao.quantization as quant
+
 from tcasl import TCASL
 from model_registry import MODEL_REGISTRY, BaseCNN, QuantWrapper
-import torch.ao.quantization as quant
 from train_cnn_and_quant_v1 import fold_bn_into_linear, _conv_fusion_list
 
 class TCASLBackend:
-    def __init__(self, default_arch: str = "sdnn_v1", base_dir: str = "data") -> None:
+    # Changed default_arch to point to the quantized CNN
+    def __init__(self, default_arch: str = "cnn_ptq_int8", base_dir: str = "data") -> None:
         self.base_dir = base_dir
         self.classes = [chr(i) for i in range(ord('a'), ord('z') + 1)]
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -53,54 +55,46 @@ class TCASLBackend:
         return True
 
     def load_model(self) -> bool:
-            path = f"{self.current_arch}.pth"
-            if not os.path.exists(path):
-                print(f"Warning: {path} not found.")
-                return False
+        path = f"{self.current_arch}.pth"
+        if not os.path.exists(path):
+            print(f"Warning: {path} not found.")
+            return False
         
-            checkpoint = torch.load(path, map_location=self.device, weights_only=False)
+        checkpoint = torch.load(path, map_location=self.device, weights_only=False)
+        
+        if "int8" in self.current_arch or "quant" in self.current_arch:
+            # 1. Instantiate the base model
+            base_model = BaseCNN(num_classes=26).to(self.device)
+            base_model.eval()
             
-            # Streamlined SDNN buffer patch
-            if "sdnn" in self.current_arch:
-                for name, module in self.model.named_modules():
-                    for attr in ['running_mean', 'running_var']:
-                        if hasattr(module, attr) and f"{name}.{attr}" in checkpoint:
-                            target_shape = checkpoint[f"{name}.{attr}"].shape
-                            module.register_buffer(attr, torch.zeros(target_shape).to(self.device))
+            # 2. MUST MATCH TRAINING: Fold the BatchNorm1d layers
+            base_model = fold_bn_into_linear(base_model)
             
-            if "int8" in self.current_arch or "quant" in self.current_arch:
-# 1. Instantiate the base model
-                base_model = BaseCNN(num_classes=26).to(self.device)
-                base_model.eval()
-                
-                # 2. MUST MATCH TRAINING: Fold the BatchNorm1d layers
-                base_model = fold_bn_into_linear(base_model)
-                
-                # 3. Wrap the model
-                self.model = QuantWrapper(base_model).to(self.device)
-                self.model.eval()
-                
-                # 4. MUST MATCH TRAINING: Fuse Conv2d + BatchNorm2d + ReLU
-                quant.fuse_modules(self.model, _conv_fusion_list(), inplace=True)
-                
-                # 5. Prepare and convert
-                self.model.qconfig = quant.get_default_qconfig('fbgemm') 
-                quant.prepare(self.model, inplace=True)
-                quant.convert(self.model, inplace=True)
-                
-                # 6. Now the architecture matches the state_dict perfectly!
-                self.model.load_state_dict(checkpoint, strict=True)
-                print(f"Successfully loaded {self.current_arch} INT8 state_dict.")
-                return True
+            # 3. Wrap the model
+            self.model = QuantWrapper(base_model).to(self.device)
+            self.model.eval()
+            
+            # 4. MUST MATCH TRAINING: Fuse Conv2d + BatchNorm2d + ReLU
+            quant.fuse_modules(self.model, _conv_fusion_list(), inplace=True)
+            
+            # 5. Prepare and convert
+            self.model.qconfig = quant.get_default_qconfig('fbgemm') 
+            quant.prepare(self.model, inplace=True)
+            quant.convert(self.model, inplace=True)
+            
+            # 6. Now the architecture matches the state_dict perfectly!
+            self.model.load_state_dict(checkpoint, strict=True)
+            print(f"Successfully loaded {self.current_arch} INT8 state_dict.")
+            return True
 
-            try:
-                self.model.load_state_dict(checkpoint, strict=True)
-                self.model.eval()
-                print(f"Successfully loaded {self.current_arch} weights.")
-                return True
-            except RuntimeError as e:
-                print(f"Strict load failed: {e}")
-                return False
+        try:
+            self.model.load_state_dict(checkpoint, strict=True)
+            self.model.eval()
+            print(f"Successfully loaded {self.current_arch} weights.")
+            return True
+        except RuntimeError as e:
+            print(f"Strict load failed: {e}")
+            return False
     
     def predict_character(self, temp_contrast_frame: np.ndarray) -> Tuple[str, List]:
         current_time = time.time()
@@ -112,9 +106,6 @@ class TCASLBackend:
         self.last_pred_time = current_time
         img = Image.fromarray(temp_contrast_frame)
         input_tensor = self.transform(img).unsqueeze(0).to(self.device)
-
-        if "sdnn" in self.current_arch:
-            input_tensor = input_tensor.unsqueeze(-1)
 
         with torch.no_grad():
             outputs = self.model(input_tensor)

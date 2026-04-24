@@ -4,6 +4,7 @@ import time
 import os
 from tkinter import ttk, messagebox, simpledialog
 from PIL import Image, ImageTk
+
 from backend import TCASLBackend
 from model_registry import MODEL_REGISTRY
 
