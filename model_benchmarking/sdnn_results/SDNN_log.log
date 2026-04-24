@@ -1,0 +1,32 @@
+nohup: ignoring input
+/mnt/data2/kes298/miniconda3/envs/keshav_asl/lib/python3.10/site-packages/torch/nn/utils/weight_norm.py:143: FutureWarning: `torch.nn.utils.weight_norm` is deprecated in favor of `torch.nn.utils.parametrizations.weight_norm`.
+  WeightNorm.apply(module, name, dim)
+Device: cuda | Architecture: SDNN
+
+Training TCASL (13000 samples, 26 classes)...
+Epoch 01/100 | Train Acc: 3.72% | Val Acc: 4.54%
+Epoch 05/100 | Train Acc: 7.68% | Val Acc: 11.62%
+Epoch 10/100 | Train Acc: 18.27% | Val Acc: 26.62%
+Epoch 15/100 | Train Acc: 27.64% | Val Acc: 40.15%
+Epoch 20/100 | Train Acc: 36.40% | Val Acc: 55.92%
+Epoch 25/100 | Train Acc: 45.12% | Val Acc: 69.38%
+Epoch 30/100 | Train Acc: 51.67% | Val Acc: 78.77%
+Epoch 35/100 | Train Acc: 58.77% | Val Acc: 83.46%
+Epoch 40/100 | Train Acc: 62.65% | Val Acc: 86.69%
+Epoch 45/100 | Train Acc: 66.31% | Val Acc: 89.23%
+Epoch 50/100 | Train Acc: 70.19% | Val Acc: 91.77%
+Epoch 55/100 | Train Acc: 72.84% | Val Acc: 93.54%
+Epoch 60/100 | Train Acc: 74.96% | Val Acc: 94.62%
+Epoch 65/100 | Train Acc: 78.08% | Val Acc: 96.69%
+Epoch 70/100 | Train Acc: 78.90% | Val Acc: 96.31%
+Epoch 75/100 | Train Acc: 81.18% | Val Acc: 97.00%
+Epoch 80/100 | Train Acc: 82.71% | Val Acc: 97.62%
+Epoch 85/100 | Train Acc: 83.28% | Val Acc: 97.46%
+Epoch 90/100 | Train Acc: 85.30% | Val Acc: 98.15%
+Epoch 95/100 | Train Acc: 85.81% | Val Acc: 98.54%
+Epoch 100/100 | Train Acc: 87.53% | Val Acc: 98.85%
+/mnt/data2/kes298/miniconda3/envs/keshav_asl/lib/python3.10/site-packages/torch/nn/utils/weight_norm.py:143: FutureWarning: `torch.nn.utils.weight_norm` is deprecated in favor of `torch.nn.utils.parametrizations.weight_norm`.
+  WeightNorm.apply(module, name, dim)
+[TCASL RESULTS] Top-1 Test Acc: 98.15%
+
+Training ASL_DVS (359447 samples, 24 classes)...
