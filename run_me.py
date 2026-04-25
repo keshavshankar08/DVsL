@@ -140,8 +140,12 @@ def apply_ptq_int8(model: nn.Module, calibration_loader) -> nn.Module:
     
     # Simple Fusion (adjust indices based on your model_registry definition)
     # Note: In a production script, you'd automate this list generation
-    torch.backends.quantized.engine = "fbgemm"
-    ptq_model.qconfig = quant.get_default_qconfig("fbgemm")
+    # --- for intel/amd ---
+    #torch.backends.quantized.engine = "fbgemm"
+    #ptq_model.qconfig = quant.get_default_qconfig("fbgemm")
+    # --- for m1 ---
+    torch.backends.quantized.engine = "qnnpack"
+    ptq_model.qconfig = quant.get_default_qconfig("qnnpack")
     quant.prepare(ptq_model, inplace=True)
 
     with torch.no_grad():
