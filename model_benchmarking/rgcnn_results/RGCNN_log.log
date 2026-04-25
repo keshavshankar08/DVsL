@@ -1,0 +1,53 @@
+nohup: ignoring input
+Device: cuda | Architecture: RGCNN
+
+Training MNIST_DVS (10000 samples, 10 classes)...
+Epoch 01/100 | Train Acc: 20.85% | Val Acc: 23.50%
+Epoch 05/100 | Train Acc: 73.78% | Val Acc: 77.00%
+Epoch 10/100 | Train Acc: 88.72% | Val Acc: 84.50%
+Epoch 15/100 | Train Acc: 92.04% | Val Acc: 89.50%
+Epoch 20/100 | Train Acc: 93.89% | Val Acc: 89.50%
+Epoch 25/100 | Train Acc: 94.60% | Val Acc: 85.90%
+Early stopping at epoch 26.
+[MNIST_DVS RESULTS] Top-1 Test Acc: 89.50%
+
+Training N_MNIST (70000 samples, 10 classes)...
+Epoch 01/100 | Train Acc: 70.25% | Val Acc: 60.23%
+Epoch 05/100 | Train Acc: 94.16% | Val Acc: 92.69%
+Epoch 10/100 | Train Acc: 96.47% | Val Acc: 95.10%
+Epoch 15/100 | Train Acc: 97.69% | Val Acc: 96.76%
+Epoch 20/100 | Train Acc: 98.33% | Val Acc: 97.03%
+Epoch 25/100 | Train Acc: 98.87% | Val Acc: 96.80%
+Early stopping at epoch 26.
+[N_MNIST RESULTS] Top-1 Test Acc: 98.29%
+
+Training TCASL (13000 samples, 26 classes)...
+Epoch 01/100 | Train Acc: 7.41% | Val Acc: 13.77%
+Epoch 05/100 | Train Acc: 35.88% | Val Acc: 22.54%
+Epoch 10/100 | Train Acc: 58.97% | Val Acc: 59.38%
+Epoch 15/100 | Train Acc: 71.61% | Val Acc: 34.69%
+Epoch 20/100 | Train Acc: 79.69% | Val Acc: 59.85%
+Epoch 25/100 | Train Acc: 86.13% | Val Acc: 66.77%
+Epoch 30/100 | Train Acc: 89.77% | Val Acc: 89.62%
+Epoch 35/100 | Train Acc: 92.29% | Val Acc: 92.46%
+Epoch 40/100 | Train Acc: 92.29% | Val Acc: 84.62%
+Epoch 45/100 | Train Acc: 94.06% | Val Acc: 71.46%
+Epoch 50/100 | Train Acc: 95.42% | Val Acc: 87.15%
+Epoch 55/100 | Train Acc: 97.97% | Val Acc: 98.08%
+Epoch 60/100 | Train Acc: 98.07% | Val Acc: 97.54%
+Epoch 65/100 | Train Acc: 98.08% | Val Acc: 97.62%
+Early stopping at epoch 68.
+[TCASL RESULTS] Top-1 Test Acc: 96.85%
+
+Training ASL_DVS (359447 samples, 24 classes)...
+Epoch 01/100 | Train Acc: 58.35% | Val Acc: 68.96%
+Epoch 05/100 | Train Acc: 93.65% | Val Acc: 96.09%
+Epoch 10/100 | Train Acc: 96.50% | Val Acc: 96.46%
+Epoch 15/100 | Train Acc: 97.40% | Val Acc: 97.56%
+Epoch 20/100 | Train Acc: 97.92% | Val Acc: 98.01%
+Epoch 25/100 | Train Acc: 98.30% | Val Acc: 98.02%
+Epoch 30/100 | Train Acc: 98.54% | Val Acc: 98.17%
+Epoch 35/100 | Train Acc: 98.73% | Val Acc: 98.09%
+Epoch 40/100 | Train Acc: 98.85% | Val Acc: 98.17%
+Early stopping at epoch 40.
+[ASL_DVS RESULTS] Top-1 Test Acc: 98.15%
