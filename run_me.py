@@ -8,8 +8,6 @@ import torch.optim as optim
 import torch.ao.quantization as quant
 from torch.utils.data import DataLoader, random_split
 from torchvision import datasets, transforms
-import matplotlib.pyplot as plt
-import seaborn as sns
 import torch.nn.utils.prune as prune
 
 from sklearn.metrics import confusion_matrix
