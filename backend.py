@@ -28,7 +28,7 @@ class TCASLBackend:
         self.last_top5 = []
 
         # Core Engine for preprocessing & temporal contrast
-        self.tcasl_engine = TCASL() 
+        self.tcasl_engine = TCASL(model_path="sdnn_v2.pth") 
         
         self.transform = transforms.Compose([
             transforms.Grayscale(num_output_channels=1),

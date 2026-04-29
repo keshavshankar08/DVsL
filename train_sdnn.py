@@ -8,7 +8,7 @@ import seaborn as sns
 from sklearn.metrics import confusion_matrix
 from model_registry import MODEL_REGISTRY
 
-TARGET_ARCH = "sdnn"
+TARGET_ARCH = "sdnn_v2"
 
 def main() -> None:
     """Executes the complete model training, evaluation, and saving pipeline."""
