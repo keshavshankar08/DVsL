@@ -10,7 +10,7 @@ from tcasl import TCASL
 from model_registry import MODEL_REGISTRY
 
 class TCASLBackend:
-    def __init__(self, default_arch: str = "sdnn_v1", base_dir: str = "data") -> None:
+    def __init__(self, default_arch: str = "sdnn_v2", base_dir: str = "data") -> None:
         self.base_dir = base_dir
         self.classes = [chr(i) for i in range(ord('a'), ord('z') + 1)]
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
